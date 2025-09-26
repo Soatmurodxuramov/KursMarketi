@@ -1,189 +1,336 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
-  StyleSheet,
-  useColorScheme,
-  ActivityIndicator,
-  FlatList,
   Text,
+  StyleSheet,
+  TouchableOpacity,
+  FlatList,
+  ActivityIndicator,
 } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors } from '../../constants/Colors';
-import { useCourses } from '../../hooks/useCourses';
-import { CourseCard } from '../../components/CourseCard';
-import { SearchBar } from '../../components/SearchBar';
-import { Course } from '../../types';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { MaterialIcons } from '@expo/vector-icons';
+import { router } from 'expo-router';
+import { Colors } from '@/constants/Colors';
+import SearchBar from '@/components/SearchBar';
+import CourseCard from '@/components/CourseCard';
+import { Course } from '@/types';
 
 export default function SearchScreen() {
-  const colorScheme = useColorScheme();
-  const colors = Colors[colorScheme ?? 'light'];
-  const insets = useSafeAreaInsets();
-  const { category } = useLocalSearchParams();
-  const { courses, searchCourses, loading } = useCourses();
-  
   const [searchQuery, setSearchQuery] = useState('');
+  const [loading, setLoading] = useState(false);
   const [searchResults, setSearchResults] = useState<Course[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-
-  useEffect(() => {
-    if (category && typeof category === 'string') {
-      const filteredCourses = courses.filter(course => course.category === category);
-      setSearchResults(filteredCourses);
-      setSearchQuery(category);
-    } else {
-      setSearchResults(courses);
+  const [recentSearches] = useState([
+    'React Native',
+    'Flutter',
+    'UI/UX Dizayn',
+    'JavaScript',
+    'Python'
+  ]);
+  const [popularCourses] = useState<Course[]>([
+    {
+      id: '1',
+      title: 'React Native Asoslari',
+      description: 'Mobile ilovalar yaratishni o\'rganish',
+      short_description: 'React Native bilan mobile development',
+      thumbnail_url: 'https://picsum.photos/300/200?random=1',
+      price: 150000,
+      original_price: 200000,
+      instructor: {
+        id: '1',
+        username: 'instructor1',
+        full_name: 'Aziz Karimov',
+        avatar_url: 'https://picsum.photos/100/100?random=1'
+      },
+      category: {
+        id: '1',
+        name: 'Dasturlash',
+        slug: 'programming'
+      },
+      level: 'Boshlang\'ich',
+      duration_minutes: 1200,
+      rating: 4.8,
+      total_reviews: 45,
+      total_students: 156,
+      is_featured: true,
+      status: 'approved' as const,
+      lessons: [],
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    },
+    {
+      id: '3',
+      title: 'UI/UX Dizayn Asoslari',
+      description: 'Foydalanuvchi interfeysi va tajribasi dizayni',
+      short_description: 'Zamonaviy UI/UX dizayn printsiplari',
+      thumbnail_url: 'https://picsum.photos/300/200?random=3',
+      price: 120000,
+      instructor: {
+        id: '3',
+        username: 'instructor3',
+        full_name: 'Jasur Toshev',
+        avatar_url: 'https://picsum.photos/100/100?random=3'
+      },
+      category: {
+        id: '2',
+        name: 'Dizayn',
+        slug: 'design'
+      },
+      level: 'Boshlang\'ich',
+      duration_minutes: 900,
+      rating: 4.7,
+      total_reviews: 89,
+      total_students: 298,
+      is_featured: true,
+      status: 'approved' as const,
+      lessons: [],
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
     }
-  }, [courses, category]);
+  ]);
 
   const handleSearch = async (query: string) => {
-    setSearchQuery(query);
-    if (query.trim() === '') {
-      setSearchResults(courses);
+    if (!query.trim()) {
+      setSearchResults([]);
       return;
     }
 
-    setIsSearching(true);
-    try {
-      const results = await searchCourses(query);
-      setSearchResults(results);
-    } finally {
-      setIsSearching(false);
-    }
+    setLoading(true);
+    
+    // Simulate API call
+    setTimeout(() => {
+      const filtered = popularCourses.filter(course => 
+        course.title.toLowerCase().includes(query.toLowerCase()) ||
+        course.description.toLowerCase().includes(query.toLowerCase()) ||
+        course.category?.name.toLowerCase().includes(query.toLowerCase())
+      );
+      
+      setSearchResults(filtered);
+      setLoading(false);
+    }, 500);
   };
 
   const handleCoursePress = (courseId: string) => {
     router.push(`/course/${courseId}`);
   };
 
-  const renderCourse = ({ item }: { item: Course }) => (
-    <CourseCard
-      course={item}
-      onPress={() => handleCoursePress(item.id)}
-    />
-  );
+  const handleRecentSearchPress = (searchTerm: string) => {
+    setSearchQuery(searchTerm);
+    handleSearch(searchTerm);
+  };
 
-  const renderEmptyState = () => (
-    <View style={styles.emptyContainer}>
-      <Text style={[styles.emptyText, { color: colors.text }]}>
-        {searchQuery ? 'Hech qanday kurs topilmadi' : 'Qidirishni boshlang...'}
-      </Text>
-      <Text style={[styles.emptySubtext, { color: colors.text }]}>
-        {searchQuery 
-          ? 'Boshqa kalit so\'zlar bilan urinib ko\'ring' 
-          : 'Yuqoridagi qidiruv maydonidan foydalaning'
-        }
-      </Text>
+  const renderHeader = () => (
+    <View style={styles.header}>
+      <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <MaterialIcons name="arrow-back" size={24} color={Colors.light.text} />
+      </TouchableOpacity>
+      <Text style={styles.title}>Qidiruv</Text>
     </View>
   );
 
-  if (loading) {
-    return (
-      <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
-  }
-
-  return (
-    <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: colors.text }]}>
-          Qidiruv
-        </Text>
-      </View>
-
-      {/* Search Bar */}
+  const renderSearchSection = () => (
+    <View style={styles.searchSection}>
       <SearchBar
         value={searchQuery}
-        onChangeText={handleSearch}
-        onSubmit={() => handleSearch(searchQuery)}
-      />
-
-      {/* Results Count */}
-      {searchResults.length > 0 && (
-        <Text style={[styles.resultCount, { color: colors.text }]}>
-          {searchResults.length} ta kurs topildi
-        </Text>
-      )}
-
-      {/* Loading Indicator for Search */}
-      {isSearching && (
-        <View style={styles.searchLoadingContainer}>
-          <ActivityIndicator size="small" color={colors.primary} />
-          <Text style={[styles.searchLoadingText, { color: colors.text }]}>
-            Qidirilmoqda...
-          </Text>
-        </View>
-      )}
-
-      {/* Results */}
-      <FlatList
-        data={searchResults}
-        renderItem={renderCourse}
-        keyExtractor={(item) => item.id}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.listContainer}
-        ListEmptyComponent={!isSearching ? renderEmptyState : null}
+        onChangeText={setSearchQuery}
+        onSubmit={handleSearch}
+        placeholder="Kurslarni qidiring..."
       />
     </View>
+  );
+
+  const renderRecentSearches = () => {
+    if (searchQuery.trim() || searchResults.length > 0) return null;
+
+    return (
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>So'nggi qidiruvlar</Text>
+        <View style={styles.recentContainer}>
+          {recentSearches.map((search, index) => (
+            <TouchableOpacity
+              key={index}
+              style={styles.recentItem}
+              onPress={() => handleRecentSearchPress(search)}
+            >
+              <MaterialIcons name="history" size={16} color={Colors.light.tabIconDefault} />
+              <Text style={styles.recentText}>{search}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+    );
+  };
+
+  const renderPopularCourses = () => {
+    if (searchQuery.trim() || searchResults.length > 0) return null;
+
+    return (
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Mashhur kurslar</Text>
+        <FlatList
+          data={popularCourses}
+          renderItem={({ item }) => (
+            <CourseCard
+              course={item}
+              onPress={() => handleCoursePress(item.id)}
+              style={styles.courseCard}
+            />
+          )}
+          keyExtractor={(item) => item.id}
+          showsVerticalScrollIndicator={false}
+        />
+      </View>
+    );
+  };
+
+  const renderSearchResults = () => {
+    if (!searchQuery.trim()) return null;
+
+    if (loading) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.light.tint} />
+          <Text style={styles.loadingText}>Qidirilmoqda...</Text>
+        </View>
+      );
+    }
+
+    if (searchResults.length === 0) {
+      return (
+        <View style={styles.emptyContainer}>
+          <MaterialIcons name="search-off" size={64} color={Colors.light.tabIconDefault} />
+          <Text style={styles.emptyTitle}>Hech narsa topilmadi</Text>
+          <Text style={styles.emptyText}>
+            "{searchQuery}" bo'yicha kurslar topilmadi. Boshqa kalit so'zlar bilan qidirib ko'ring.
+          </Text>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>
+          Natijalar: {searchResults.length} ta kurs topildi
+        </Text>
+        <FlatList
+          data={searchResults}
+          renderItem={({ item }) => (
+            <CourseCard
+              course={item}
+              onPress={() => handleCoursePress(item.id)}
+              style={styles.courseCard}
+            />
+          )}
+          keyExtractor={(item) => item.id}
+          showsVerticalScrollIndicator={false}
+        />
+      </View>
+    );
+  };
+
+  return (
+    <SafeAreaView style={styles.container}>
+      {renderHeader()}
+      {renderSearchSection()}
+      
+      <View style={styles.content}>
+        {renderRecentSearches()}
+        {renderPopularCourses()}
+        {renderSearchResults()}
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: Colors.light.background,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  backButton: {
+    padding: 4,
+    marginRight: 12,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: Colors.light.text,
+  },
+  searchSection: {
+    backgroundColor: 'white',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  content: {
+    flex: 1,
+  },
+  section: {
+    paddingHorizontal: 16,
+    paddingVertical: 20,
+    backgroundColor: 'white',
+    marginTop: 8,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: Colors.light.text,
+    marginBottom: 16,
+  },
+  recentContainer: {
+    gap: 12,
+  },
+  recentItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    gap: 12,
+  },
+  recentText: {
+    fontSize: 16,
+    color: Colors.light.text,
+  },
+  courseCard: {
+    marginBottom: 16,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    gap: 16,
+    paddingVertical: 40,
   },
-  header: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-  },
-  resultCount: {
-    paddingHorizontal: 16,
-    fontSize: 14,
-    opacity: 0.7,
-    marginBottom: 8,
-  },
-  searchLoadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-  },
-  searchLoadingText: {
-    marginLeft: 8,
-    fontSize: 14,
-  },
-  listContainer: {
-    paddingBottom: 20,
+  loadingText: {
+    fontSize: 16,
+    color: Colors.light.tabIconDefault,
   },
   emptyContainer: {
     flex: 1,
-    alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 60,
+    alignItems: 'center',
     paddingHorizontal: 32,
+    paddingVertical: 40,
   },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    textAlign: 'center',
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: Colors.light.text,
+    marginTop: 16,
     marginBottom: 8,
   },
-  emptySubtext: {
-    fontSize: 14,
-    opacity: 0.7,
+  emptyText: {
+    fontSize: 16,
+    color: Colors.light.tabIconDefault,
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 22,
   },
 });

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,130 +6,284 @@ import {
   StyleSheet,
   TouchableOpacity,
   RefreshControl,
-  Alert,
-  Modal,
-  Platform,
+  FlatList,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
-import { useCourses } from '@/hooks/useCourses';
-import { useAuth } from '@/hooks/useAuth';
+import { router } from 'expo-router';
 import { Colors } from '@/constants/Colors';
 import CourseCard from '@/components/CourseCard';
+import { Course, Category } from '@/types';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function CoursesScreen() {
-  const { courses, loading, error, fetchCourses, clearError } = useCourses();
-  const { user, profile } = useAuth();
+  const { user } = useAuth();
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Alert state for web compatibility
-  const [alertConfig, setAlertConfig] = useState<{
-    visible: boolean;
-    title: string;
-    message: string;
-    onOk?: () => void;
-  }>({ visible: false, title: '', message: '' });
+  useEffect(() => {
+    loadData();
+  }, []);
 
-  const showWebAlert = (title: string, message: string, onOk?: () => void) => {
-    if (Platform.OS === 'web') {
-      setAlertConfig({ visible: true, title, message, onOk });
-    } else {
-      Alert.alert(title, message, onOk ? [{ text: 'OK', onPress: onOk }] : undefined);
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      // Load sample data
+      const sampleCategories: Category[] = [
+        { id: 'all', name: 'Barchasi', slug: 'all' },
+        { id: '1', name: 'Dasturlash', slug: 'programming' },
+        { id: '2', name: 'Dizayn', slug: 'design' },
+        { id: '3', name: 'Marketing', slug: 'marketing' },
+        { id: '4', name: 'Biznes', slug: 'business' },
+      ];
+
+      const sampleCourses: Course[] = [
+        {
+          id: '1',
+          title: 'React Native Asoslari',
+          description: 'Mobile ilovalar yaratishni o\'rganish',
+          short_description: 'React Native bilan mobile development',
+          thumbnail_url: 'https://picsum.photos/300/200?random=1',
+          price: 150000,
+          original_price: 200000,
+          instructor: {
+            id: '1',
+            username: 'instructor1',
+            full_name: 'Aziz Karimov',
+            avatar_url: 'https://picsum.photos/100/100?random=1'
+          },
+          category: {
+            id: '1',
+            name: 'Dasturlash',
+            slug: 'programming'
+          },
+          level: 'Boshlang\'ich',
+          duration_minutes: 1200,
+          rating: 4.8,
+          total_reviews: 45,
+          total_students: 156,
+          is_featured: true,
+          status: 'approved' as const,
+          lessons: [],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        },
+        {
+          id: '2',
+          title: 'Flutter Mobil Dasturlash',
+          description: 'Cross-platform mobile ilovalar yaratish',
+          short_description: 'Flutter bilan iOS va Android ilovalar',
+          thumbnail_url: 'https://picsum.photos/300/200?random=2',
+          price: 180000,
+          instructor: {
+            id: '2',
+            username: 'instructor2',
+            full_name: 'Madina Usmonova',
+            avatar_url: 'https://picsum.photos/100/100?random=2'
+          },
+          category: {
+            id: '1',
+            name: 'Dasturlash',
+            slug: 'programming'
+          },
+          level: 'O\'rta',
+          duration_minutes: 1800,
+          rating: 4.9,
+          total_reviews: 67,
+          total_students: 234,
+          is_featured: false,
+          status: 'approved' as const,
+          lessons: [],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        },
+        {
+          id: '3',
+          title: 'UI/UX Dizayn Asoslari',
+          description: 'Foydalanuvchi interfeysi va tajribasi dizayni',
+          short_description: 'Zamonaviy UI/UX dizayn printsiplari',
+          thumbnail_url: 'https://picsum.photos/300/200?random=3',
+          price: 120000,
+          instructor: {
+            id: '3',
+            username: 'instructor3',
+            full_name: 'Jasur Toshev',
+            avatar_url: 'https://picsum.photos/100/100?random=3'
+          },
+          category: {
+            id: '2',
+            name: 'Dizayn',
+            slug: 'design'
+          },
+          level: 'Boshlang\'ich',
+          duration_minutes: 900,
+          rating: 4.7,
+          total_reviews: 89,
+          total_students: 298,
+          is_featured: true,
+          status: 'approved' as const,
+          lessons: [],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        },
+        {
+          id: '4',
+          title: 'Digital Marketing Strategiyalari',
+          description: 'Raqamli marketing va SMM',
+          short_description: 'Online biznesni rivojlantirish usullari',
+          thumbnail_url: 'https://picsum.photos/300/200?random=4',
+          price: 100000,
+          instructor: {
+            id: '4',
+            username: 'instructor4',
+            full_name: 'Nilufar Rahimova',
+            avatar_url: 'https://picsum.photos/100/100?random=4'
+          },
+          category: {
+            id: '3',
+            name: 'Marketing',
+            slug: 'marketing'
+          },
+          level: 'O\'rta',
+          duration_minutes: 1500,
+          rating: 4.6,
+          total_reviews: 134,
+          total_students: 567,
+          is_featured: false,
+          status: 'approved' as const,
+          lessons: [],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        },
+        {
+          id: '5',
+          title: 'Startup Yaratish',
+          description: 'Noldan biznes qurish va rivojlantirish',
+          short_description: 'Muvaffaqiyatli startup yaratish sirlari',
+          thumbnail_url: 'https://picsum.photos/300/200?random=5',
+          price: 250000,
+          instructor: {
+            id: '5',
+            username: 'instructor5',
+            full_name: 'Botir Aliyev',
+            avatar_url: 'https://picsum.photos/100/100?random=5'
+          },
+          category: {
+            id: '4',
+            name: 'Biznes',
+            slug: 'business'
+          },
+          level: 'Yuqori',
+          duration_minutes: 2400,
+          rating: 4.9,
+          total_reviews: 78,
+          total_students: 145,
+          is_featured: true,
+          status: 'approved' as const,
+          lessons: [],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }
+      ];
+
+      setCategories(sampleCategories);
+      setCourses(sampleCourses);
+    } catch (error) {
+      console.error('Error loading courses:', error);
+    } finally {
+      setLoading(false);
     }
   };
-
-  useEffect(() => {
-    if (user) {
-      fetchCourses();
-    }
-  }, [user]);
-
-  useEffect(() => {
-    if (error) {
-      showWebAlert('Error', error);
-      clearError();
-    }
-  }, [error]);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchCourses();
+    await loadData();
     setRefreshing(false);
   };
 
+  const filteredCourses = selectedCategory === 'all' 
+    ? courses 
+    : courses.filter(course => course.category?.id === selectedCategory);
+
   const handleCoursePress = (courseId: string) => {
-    // Navigate to course detail
-    console.log('Navigate to course:', courseId);
+    router.push(`/course/${courseId}`);
   };
 
-  const renderEmptyState = () => (
-    <View style={styles.emptyContainer}>
-      <MaterialIcons name="school" size={64} color={Colors.light.tabIconDefault} />
-      <Text style={styles.emptyTitle}>Kurslar topilmadi</Text>
-      <Text style={styles.emptySubtitle}>
-        Hozircha tasdiqlangan kurslar mavjud emas
-      </Text>
-      <TouchableOpacity style={styles.refreshButton} onPress={onRefresh}>
-        <Text style={styles.refreshButtonText}>Yangilash</Text>
-      </TouchableOpacity>
+  const renderCategoryFilter = () => (
+    <View style={styles.categoryFilter}>
+      <ScrollView 
+        horizontal 
+        showsHorizontalScrollIndicator={false}
+        style={styles.categoryScroll}
+        contentContainerStyle={styles.categoryContainer}
+      >
+        {categories.map((category) => (
+          <TouchableOpacity
+            key={category.id}
+            style={[
+              styles.categoryButton,
+              selectedCategory === category.id && styles.selectedCategoryButton
+            ]}
+            onPress={() => setSelectedCategory(category.id)}
+          >
+            <Text style={[
+              styles.categoryButtonText,
+              selectedCategory === category.id && styles.selectedCategoryButtonText
+            ]}>
+              {category.name}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
     </View>
   );
 
-  const renderHeader = () => (
-    <View style={styles.header}>
-      <Text style={styles.headerTitle}>Barcha kurslar</Text>
-      <Text style={styles.headerSubtitle}>
-        {courses.length} ta kurs mavjud
-      </Text>
-    </View>
+  const renderCourseItem = ({ item }: { item: Course }) => (
+    <CourseCard
+      course={item}
+      onPress={() => handleCoursePress(item.id)}
+      style={styles.courseCard}
+    />
   );
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.light.tint} />
+          <Text style={styles.loadingText}>Kurslar yuklanmoqda...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView
-        style={styles.scrollView}
+      <View style={styles.header}>
+        <Text style={styles.title}>Kurslar</Text>
+        <TouchableOpacity onPress={() => router.push('/search')}>
+          <MaterialIcons name="search" size={24} color={Colors.light.text} />
+        </TouchableOpacity>
+      </View>
+      
+      {renderCategoryFilter()}
+      
+      <FlatList
+        data={filteredCourses}
+        renderItem={renderCourseItem}
+        keyExtractor={(item) => item.id}
+        style={styles.coursesList}
+        contentContainerStyle={styles.coursesContainer}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
-      >
-        {renderHeader()}
-        
-        {courses.length === 0 && !loading ? (
-          renderEmptyState()
-        ) : (
-          <View style={styles.coursesGrid}>
-            {courses.map((course) => (
-              <CourseCard
-                key={course.id}
-                course={course}
-                onPress={() => handleCoursePress(course.id)}
-                style={styles.courseCard}
-              />
-            ))}
-          </View>
-        )}
-      </ScrollView>
-
-      {/* Web Alert Modal */}
-      {Platform.OS === 'web' && (
-        <Modal visible={alertConfig.visible} transparent animationType="fade">
-          <View style={styles.alertOverlay}>
-            <View style={styles.alertContainer}>
-              <Text style={styles.alertTitle}>{alertConfig.title}</Text>
-              <Text style={styles.alertMessage}>{alertConfig.message}</Text>
-              <TouchableOpacity
-                style={styles.alertButton}
-                onPress={() => {
-                  alertConfig.onOk?.();
-                  setAlertConfig(prev => ({ ...prev, visible: false }));
-                }}
-              >
-                <Text style={styles.alertButtonText}>OK</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
-      )}
+        showsVerticalScrollIndicator={false}
+        numColumns={1}
+      />
     </SafeAreaView>
   );
 }
@@ -139,96 +293,71 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.light.background,
   },
-  scrollView: {
-    flex: 1,
-  },
   header: {
-    padding: 20,
-    paddingBottom: 10,
-  },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: Colors.light.text,
-    marginBottom: 4,
-  },
-  headerSubtitle: {
-    fontSize: 16,
-    color: Colors.light.tabIconDefault,
-  },
-  coursesGrid: {
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-  },
-  courseCard: {
-    marginBottom: 16,
-  },
-  emptyContainer: {
-    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-    paddingHorizontal: 40,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
   },
-  emptyTitle: {
+  title: {
     fontSize: 24,
     fontWeight: 'bold',
     color: Colors.light.text,
-    marginTop: 16,
-    marginBottom: 8,
-    textAlign: 'center',
   },
-  emptySubtitle: {
-    fontSize: 16,
-    color: Colors.light.tabIconDefault,
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 24,
-  },
-  refreshButton: {
-    backgroundColor: Colors.light.tint,
-    paddingHorizontal: 24,
+  categoryFilter: {
+    backgroundColor: 'white',
     paddingVertical: 12,
-    borderRadius: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
   },
-  refreshButtonText: {
+  categoryScroll: {
+    paddingHorizontal: 16,
+  },
+  categoryContainer: {
+    gap: 12,
+  },
+  categoryButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#f8f9fa',
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  selectedCategoryButton: {
+    backgroundColor: Colors.light.tint,
+    borderColor: Colors.light.tint,
+  },
+  categoryButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: Colors.light.text,
+  },
+  selectedCategoryButtonText: {
     color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
   },
-  // Alert styles
-  alertOverlay: {
+  coursesList: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  coursesContainer: {
+    padding: 16,
+    gap: 16,
+  },
+  courseCard: {
+    marginBottom: 0,
+  },
+  loadingContainer: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    gap: 16,
   },
-  alertContainer: {
-    backgroundColor: 'white',
-    padding: 20,
-    borderRadius: 8,
-    minWidth: 280,
-    maxWidth: 340,
-  },
-  alertTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    color: Colors.light.text,
-  },
-  alertMessage: {
+  loadingText: {
     fontSize: 16,
-    marginBottom: 20,
-    color: Colors.light.text,
-  },
-  alertButton: {
-    backgroundColor: Colors.light.tint,
-    padding: 10,
-    borderRadius: 4,
-    alignItems: 'center',
-  },
-  alertButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
+    color: Colors.light.tabIconDefault,
   },
 });

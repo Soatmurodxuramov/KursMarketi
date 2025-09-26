@@ -10,45 +10,22 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { useCategories } from '@/hooks/useCourses';
+import { useAuth } from '@/hooks/useAuth';
 import { Colors } from '@/constants/Colors';
 import CourseCard from '@/components/CourseCard';
 import CategoryCard from '@/components/CategoryCard';
 import { Course } from '@/types';
 
-// Safe auth check without Context dependency
-function useSafeAuth() {
-  const [authState, setAuthState] = useState({ user: null, profile: null, loading: true });
-  
-  useEffect(() => {
-    // Simulate auth check delay
-    const timer = setTimeout(() => {
-      setAuthState({
-        user: { id: '1', email: 'test@example.com' },
-        profile: { 
-          id: '1',
-          username: 'test_user',
-          full_name: 'Test Foydalanuvchi',
-          role: 'user' as const
-        },
-        loading: false
-      });
-    }, 1000);
-    
-    return () => clearTimeout(timer);
-  }, []);
-  
-  return authState;
-}
-
 export default function HomeScreen() {
-  const { user, profile, loading: authLoading } = useSafeAuth();
+  const { user, profile, loading: authLoading } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
   const [courses, setCourses] = useState<Course[]>([]);
   const [enrolledCourses, setEnrolledCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(false);
   
-  // Use standalone category hook (no Context dependency)
+  // Use standalone category hook
   const categoryHooks = useCategories();
   const categories = categoryHooks?.categories || [];
 
@@ -144,13 +121,14 @@ export default function HomeScreen() {
   };
 
   const handleCoursePress = (courseId: string) => {
-    console.log('Navigate to course:', courseId);
-    // router.push(`/course/${courseId}`);
+    router.push(`/course/${courseId}`);
   };
 
   const handleCategoryPress = (categoryId: string) => {
-    console.log('Navigate to category:', categoryId);
-    // Apply category filter and navigate to courses tab
+    router.push({
+      pathname: '/courses' as any,
+      params: { categoryId }
+    });
   };
 
   const renderWelcomeSection = () => (
