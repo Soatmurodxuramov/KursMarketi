@@ -4,7 +4,7 @@ import supabase from '../services/supabase';
 import { AuthService } from '../services/authService';
 import { AuthState, UserProfile, SignUpData } from '../types/auth';
 
-// Create context with null default to prevent _currentValue2 error
+// Create context
 export const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -16,12 +16,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let mounted = true;
     
-    // Get initial session
     const getInitialSession = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session }, error } = await supabase.auth.getSession();
         
         if (!mounted) return;
+        
+        if (error) {
+          console.error('Session error:', error);
+          setLoading(false);
+          return;
+        }
         
         setUser(session?.user ?? null);
         
@@ -43,6 +48,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!mounted) return;
+        
+        console.log('Auth event:', event, session?.user?.id);
         
         setUser(session?.user ?? null);
         
@@ -78,11 +85,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchUserProfile = async (userId: string) => {
     try {
-      const { data, error } = await AuthService.getUserProfile(userId);
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+      
       if (error) {
         console.error('Error fetching profile:', error);
         return;
       }
+      
       setProfile(data);
     } catch (error) {
       console.error('Error fetching profile:', error);
@@ -92,13 +105,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = async (email: string, password: string) => {
     try {
       setLoading(true);
-      const { data, error } = await AuthService.signIn(email, password);
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
       
       if (error) {
         return { error };
       }
       
-      return { error: null };
+      return { error: null, data };
     } catch (error) {
       return { error };
     } finally {
@@ -110,24 +126,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setLoading(true);
       
-      // Check username availability first
-      const { available, error: usernameError } = await AuthService.checkUsernameAvailability(signUpData.username);
-      
-      if (usernameError) {
-        return { error: usernameError };
-      }
-      
-      if (!available) {
-        return { error: { message: 'Username already taken' } };
-      }
-
-      const { data, error } = await AuthService.signUp(signUpData);
+      const { data, error } = await supabase.auth.signUp({
+        email: signUpData.email,
+        password: signUpData.password,
+        options: {
+          data: {
+            username: signUpData.username,
+            full_name: signUpData.full_name
+          }
+        }
+      });
       
       if (error) {
         return { error };
       }
       
-      return { error: null };
+      return { error: null, data };
     } catch (error) {
       return { error };
     } finally {
@@ -138,7 +152,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     try {
       setLoading(true);
-      await AuthService.signOut();
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error('Sign out error:', error);
+      }
     } catch (error) {
       console.error('Error signing out:', error);
     } finally {
@@ -148,7 +165,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const resetPassword = async (email: string) => {
     try {
-      const { error } = await AuthService.resetPassword(email);
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: 'exp://localhost:8081/auth/reset-password'
+      });
       return { error };
     } catch (error) {
       return { error };
@@ -159,14 +178,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!user) return { error: { message: 'No authenticated user' } };
     
     try {
-      const { data, error } = await AuthService.updateUserProfile(user.id, updates);
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', user.id)
+        .select()
+        .single();
       
       if (error) {
         return { error };
       }
       
       setProfile(data);
-      return { error: null };
+      return { error: null, data };
     } catch (error) {
       return { error };
     }
@@ -193,5 +220,3 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
-
-// Remove duplicate useAuth function - only keep the one in hooks/useAuth.ts

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -9,117 +10,39 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { Image } from 'expo-image';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors } from '../../constants/Colors';
-import { Course } from '../../types';
+import { Colors } from '@/constants/Colors';
+import { Course } from '@/types';
+import { useCourses } from '@/hooks/useCourses';
 
 export default function CourseDetailScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
-  const { id } = useLocalSearchParams();
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const { getCourse, purchaseCourse } = useCourses();
   
   const [course, setCourse] = useState<Course | null>(null);
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState(false);
-  const [isEnrolled, setIsEnrolled] = useState(false);
 
   useEffect(() => {
     loadCourse();
   }, [id]);
 
   const loadCourse = async () => {
-    if (typeof id === 'string') {
-      try {
-        // Sample course data with proper structure
-        const sampleCourse: Course = {
-          id: id,
-          title: 'React Native Asoslari',
-          description: `Bu kurs React Native texnologiyasi orqali mobile ilovalar yaratish bo'yicha to'liq ma'lumot beradi. 
-
-Kurs davomida quyidagi mavzularni o'rganasiz:
-• React Native asoslari
-• Navigation va routing  
-• State management
-• API integration
-• Performance optimization
-• Testing va debugging
-
-Kurs oxirida siz professional darajada mobile ilovalar yarata olasiz.`,
-          short_description: 'React Native bilan mobile development',
-          thumbnail_url: 'https://picsum.photos/400/300?random=1',
-          price: 150000,
-          original_price: 200000,
-          instructor: {
-            id: '1',
-            username: 'instructor1',
-            full_name: 'Aziz Karimov',
-            avatar_url: 'https://picsum.photos/100/100?random=1'
-          },
-          category: {
-            id: '1',
-            name: 'Dasturlash',
-            slug: 'programming'
-          },
-          level: 'Boshlang\'ich',
-          duration_minutes: 1200,
-          rating: 4.8,
-          total_reviews: 45,
-          total_students: 156,
-          is_featured: true,
-          status: 'approved' as const,
-          lessons: [
-            {
-              id: '1',
-              course_id: id,
-              title: 'Kirish va React Native o\'rnatish',
-              description: 'React Native muhitini o\'rnatish va birinchi loyiha yaratish',
-              video_url: 'https://example.com/video1.mp4',
-              duration_minutes: 45,
-              order_index: 1,
-              is_preview: true,
-              resources_urls: [],
-              created_at: new Date().toISOString()
-            },
-            {
-              id: '2',
-              course_id: id,
-              title: 'Komponentlar va JSX',
-              description: 'React Native komponentlari va JSX sintaksisi',
-              video_url: 'https://example.com/video2.mp4',
-              duration_minutes: 60,
-              order_index: 2,
-              is_preview: false,
-              resources_urls: [],
-              created_at: new Date().toISOString()
-            },
-            {
-              id: '3',
-              course_id: id,
-              title: 'State va Props',
-              description: 'Ma\'lumotlarni boshqarish va komponentlar orasida uzatish',
-              video_url: 'https://example.com/video3.mp4',
-              duration_minutes: 55,
-              order_index: 3,
-              is_preview: false,
-              resources_urls: [],
-              created_at: new Date().toISOString()
-            }
-          ],
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-        
-        setCourse(sampleCourse);
-        // Check if user is enrolled (simulate for demo)
-        setIsEnrolled(Math.random() > 0.5);
-      } catch (error) {
-        console.error('Error loading course:', error);
-        Alert.alert('Xatolik', 'Kurs ma\'lumotlarini yuklashda xatolik yuz berdi');
-      } finally {
-        setLoading(false);
-      }
+    if (!id) return;
+    
+    setLoading(true);
+    try {
+      const courseData = await getCourse(id);
+      setCourse(courseData);
+    } catch (error) {
+      console.error('Error loading course:', error);
+      Alert.alert('Xatolik', "Kurs ma'lumotlarini yuklashda xatolik yuz berdi");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -136,15 +59,16 @@ Kurs oxirida siz professional darajada mobile ilovalar yarata olasiz.`,
           onPress: async () => {
             setPurchasing(true);
             try {
-              // Simulate purchase
-              setTimeout(() => {
-                setIsEnrolled(true);
-                setPurchasing(false);
-                Alert.alert('Muvaffaqiyat!', 'Kurs muvaffaqiyatli sotib olindi!');
-              }, 2000);
-            } catch (error) {
+              const success = await purchaseCourse(course.id);
+              if (success) {
+                Alert.alert('Muvaffaqiyat!', 'Kurs muvaffaqiyatli sotib olindi!', [
+                  { text: 'OK', onPress: () => loadCourse() } // Reload to update enrollment status
+                ]);
+              } else {
+                Alert.alert('Xatolik', 'Kursni sotib olishda xatolik yuz berdi');
+              }
+            } finally {
               setPurchasing(false);
-              Alert.alert('Xatolik', 'Kursni sotib olishda xatolik yuz berdi');
             }
           }
         }
@@ -153,47 +77,60 @@ Kurs oxirida siz professional darajada mobile ilovalar yarata olasiz.`,
   };
 
   const handleLessonPress = (lessonId: string) => {
-    if (course && isEnrolled) {
+    if (course && (course.isEnrolled || course.lessons?.find(l => l.id === lessonId)?.is_preview)) {
       router.push(`/lesson/${course.id}/${lessonId}`);
     } else {
-      Alert.alert('Kursga yoziling', 'Video darslarni ko\'rish uchun avval kursga yozilib oling');
+      Alert.alert('Kursga yoziling', "Video darslarni ko'rish uchun avval kursga yozilib oling");
     }
   };
 
   const formatPrice = (price: number) => {
-    return new Intl.NumberFormat('uz-UZ').format(price) + ' so\'m';
+    return new Intl.NumberFormat('uz-UZ').format(price) + " so'm";
+  };
+
+  const formatDuration = (minutes: number) => {
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    if (hours > 0) {
+      return `${hours}h ${remainingMinutes}m`;
+    }
+    return `${minutes}m`;
   };
 
   if (loading) {
     return (
-      <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={[styles.loadingText, { color: colors.text }]}>
-          Kurs yuklanmoqda...
-        </Text>
-      </View>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: colors.text }]}>
+            Kurs yuklanmoqda...
+          </Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (!course) {
     return (
-      <View style={[styles.errorContainer, { backgroundColor: colors.background }]}>
-        <MaterialIcons name="error" size={64} color={colors.text} />
-        <Text style={[styles.errorText, { color: colors.text }]}>
-          Kurs topilmadi
-        </Text>
-        <TouchableOpacity 
-          style={[styles.backButton, { backgroundColor: colors.primary }]}
-          onPress={() => router.back()}
-        >
-          <Text style={styles.backButtonText}>Orqaga</Text>
-        </TouchableOpacity>
-      </View>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={styles.errorContainer}>
+          <MaterialIcons name="error" size={64} color={colors.text} />
+          <Text style={[styles.errorText, { color: colors.text }]}>
+            Kurs topilmadi
+          </Text>
+          <TouchableOpacity 
+            style={[styles.backButton, { backgroundColor: colors.primary }]}
+            onPress={() => router.back()}
+          >
+            <Text style={styles.backButtonText}>Orqaga</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={[styles.header, { backgroundColor: colors.card }]}>
@@ -204,11 +141,13 @@ Kurs oxirida siz professional darajada mobile ilovalar yarata olasiz.`,
         </View>
 
         {/* Course Image */}
-        <Image
-          source={{ uri: course.thumbnail_url }}
-          style={styles.thumbnail}
-          contentFit="cover"
-        />
+        {course.thumbnail_url && (
+          <View style={styles.imageContainer}>
+            <Text style={[styles.imagePlaceholder, { color: colors.text }]}>
+              📚 {course.title}
+            </Text>
+          </View>
+        )}
 
         {/* Course Info */}
         <View style={styles.content}>
@@ -218,14 +157,14 @@ Kurs oxirida siz professional darajada mobile ilovalar yarata olasiz.`,
 
           <View style={styles.metaContainer}>
             <View style={styles.instructorInfo}>
-              <Image
-                source={{ uri: course.instructor.avatar_url }}
-                style={styles.instructorAvatar}
-                contentFit="cover"
-              />
+              <View style={[styles.instructorAvatar, { backgroundColor: colors.secondary }]}>
+                <Text style={[styles.avatarText, { color: colors.text }]}>
+                  {course.instructor?.full_name?.[0] || 'I'}
+                </Text>
+              </View>
               <View>
                 <Text style={[styles.instructorName, { color: colors.text }]}>
-                  {course.instructor.full_name}
+                  {course.instructor?.full_name || 'Instructor'}
                 </Text>
                 <Text style={[styles.instructorBio, { color: colors.text }]}>
                   Tajribali o'qituvchi
@@ -237,13 +176,13 @@ Kurs oxirida siz professional darajada mobile ilovalar yarata olasiz.`,
               <View style={styles.statItem}>
                 <MaterialIcons name="star" size={16} color="#fbbf24" />
                 <Text style={[styles.statText, { color: colors.text }]}>
-                  {course.rating} ({course.total_reviews})
+                  {course.rating.toFixed(1)} ({course.total_reviews})
                 </Text>
               </View>
               <View style={styles.statItem}>
                 <MaterialIcons name="access-time" size={16} color={colors.text} />
                 <Text style={[styles.statText, { color: colors.text }]}>
-                  {Math.round(course.duration_minutes / 60)}h {course.duration_minutes % 60}m
+                  {formatDuration(course.duration_minutes)}
                 </Text>
               </View>
               <View style={styles.statItem}>
@@ -252,19 +191,25 @@ Kurs oxirida siz professional darajada mobile ilovalar yarata olasiz.`,
                   {course.level}
                 </Text>
               </View>
+              <View style={styles.statItem}>
+                <MaterialIcons name="people" size={16} color={colors.text} />
+                <Text style={[styles.statText, { color: colors.text }]}>
+                  {course.total_students} talaba
+                </Text>
+              </View>
             </View>
           </View>
 
           {/* Description */}
           <Text style={[styles.description, { color: colors.text }]}>
-            {course.description}
+            {course.description || course.short_description}
           </Text>
 
           {/* Tags */}
           <View style={styles.tagsContainer}>
             <View style={[styles.tag, { backgroundColor: colors.secondary }]}>
               <Text style={[styles.tagText, { color: colors.text }]}>
-                {course.category.name}
+                {course.category?.name || 'Kategoria'}
               </Text>
             </View>
             <View style={[styles.tag, { backgroundColor: colors.secondary }]}>
@@ -272,59 +217,66 @@ Kurs oxirida siz professional darajada mobile ilovalar yarata olasiz.`,
                 {course.level}
               </Text>
             </View>
-            <View style={[styles.tag, { backgroundColor: colors.secondary }]}>
-              <Text style={[styles.tagText, { color: colors.text }]}>
-                Mobile Development
-              </Text>
-            </View>
+            {course.is_featured && (
+              <View style={[styles.tag, { backgroundColor: '#fbbf24' }]}>
+                <Text style={[styles.tagText, { color: 'white' }]}>
+                  ⭐ Tavsiya
+                </Text>
+              </View>
+            )}
           </View>
 
           {/* Lessons */}
-          <View style={styles.lessonsContainer}>
-            <Text style={[styles.lessonsTitle, { color: colors.text }]}>
-              Darsliklar ({course.lessons.length})
-            </Text>
-            {course.lessons.map((lesson, index) => (
-              <TouchableOpacity
-                key={lesson.id}
-                style={[
-                  styles.lessonItem,
-                  { backgroundColor: colors.card, borderColor: colors.border }
-                ]}
-                onPress={() => handleLessonPress(lesson.id)}
-                disabled={!isEnrolled && !lesson.is_preview}
-              >
-                <View style={styles.lessonLeft}>
-                  <View style={[styles.lessonNumber, { backgroundColor: colors.primary }]}>
-                    <Text style={styles.lessonNumberText}>
-                      {index + 1}
-                    </Text>
+          {course.lessons && course.lessons.length > 0 && (
+            <View style={styles.lessonsContainer}>
+              <Text style={[styles.lessonsTitle, { color: colors.text }]}>
+                Darsliklar ({course.lessons.length})
+              </Text>
+              {course.lessons
+                .sort((a, b) => a.order_index - b.order_index)
+                .map((lesson, index) => (
+                <TouchableOpacity
+                  key={lesson.id}
+                  style={[
+                    styles.lessonItem,
+                    { backgroundColor: colors.card, borderColor: colors.border }
+                  ]}
+                  onPress={() => handleLessonPress(lesson.id)}
+                  disabled={!course.isEnrolled && !lesson.is_preview}
+                >
+                  <View style={styles.lessonLeft}>
+                    <View style={[styles.lessonNumber, { backgroundColor: colors.primary }]}>
+                      <Text style={styles.lessonNumberText}>
+                        {lesson.order_index}
+                      </Text>
+                    </View>
+                    <View style={styles.lessonInfo}>
+                      <Text style={[styles.lessonTitle, { color: colors.text }]}>
+                        {lesson.title}
+                      </Text>
+                      <Text style={[styles.lessonDuration, { color: colors.text }]}>
+                        {formatDuration(lesson.duration_minutes)}
+                        {lesson.is_preview && " • Bepul ko'rish"}
+                      </Text>
+                    </View>
                   </View>
-                  <View style={styles.lessonInfo}>
-                    <Text style={[styles.lessonTitle, { color: colors.text }]}>
-                      {lesson.title}
-                    </Text>
-                    <Text style={[styles.lessonDuration, { color: colors.text }]}>
-                      {lesson.duration_minutes} daqiqa
-                    </Text>
-                  </View>
-                </View>
-                {isEnrolled || lesson.is_preview ? (
-                  <MaterialIcons name="play-circle-outline" size={20} color={colors.primary} />
-                ) : (
-                  <MaterialIcons name="lock" size={20} color={colors.text} />
-                )}
-              </TouchableOpacity>
-            ))}
-          </View>
+                  {course.isEnrolled || lesson.is_preview ? (
+                    <MaterialIcons name="play-circle-outline" size={20} color={colors.primary} />
+                  ) : (
+                    <MaterialIcons name="lock" size={20} color={colors.text} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </View>
       </ScrollView>
 
       {/* Purchase Button */}
-      {!isEnrolled && (
+      {!course.isEnrolled && (
         <View style={[styles.purchaseContainer, { backgroundColor: colors.background, borderTopColor: colors.border }]}>
           <View style={styles.priceContainer}>
-            {course.original_price && (
+            {course.original_price && course.original_price > course.price && (
               <Text style={[styles.originalPrice, { color: colors.text }]}>
                 {formatPrice(course.original_price)}
               </Text>
@@ -353,13 +305,13 @@ Kurs oxirida siz professional darajada mobile ilovalar yarata olasiz.`,
       )}
 
       {/* Enrolled Badge */}
-      {isEnrolled && (
+      {course.isEnrolled && (
         <View style={[styles.enrolledContainer, { backgroundColor: '#10b981' }]}>
           <MaterialIcons name="check-circle" size={20} color="white" />
           <Text style={styles.enrolledText}>Siz ushbu kursga yozilgansiz</Text>
         </View>
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -382,6 +334,17 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: 'bold',
+  },
+  imageContainer: {
+    height: 200,
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imagePlaceholder: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    textAlign: 'center',
   },
   loadingContainer: {
     flex: 1,
@@ -414,10 +377,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
-  thumbnail: {
-    width: '100%',
-    height: 250,
-  },
   content: {
     padding: 16,
   },
@@ -440,6 +399,12 @@ const styles = StyleSheet.create({
     height: 50,
     borderRadius: 25,
     marginRight: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarText: {
+    fontSize: 20,
+    fontWeight: 'bold',
   },
   instructorName: {
     fontSize: 16,

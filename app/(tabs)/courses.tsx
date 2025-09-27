@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -11,197 +12,41 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Colors } from '@/constants/Colors';
 import CourseCard from '@/components/CourseCard';
-import { Course, Category } from '@/types';
-import { useAuth } from '@/hooks/useAuth';
+import { Course } from '@/types';
+import { useCourses } from '@/hooks/useCourses';
 
 export default function CoursesScreen() {
-  const { user } = useAuth();
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [loading, setLoading] = useState(false);
+  const { categoryId } = useLocalSearchParams<{ categoryId?: string }>();
+  const { 
+    courses, 
+    categories, 
+    loading, 
+    error, 
+    fetchCourses, 
+    clearError 
+  } = useCourses();
+  const [selectedCategory, setSelectedCategory] = useState<string>(categoryId || 'all');
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      // Load sample data
-      const sampleCategories: Category[] = [
-        { id: 'all', name: 'Barchasi', slug: 'all' },
-        { id: '1', name: 'Dasturlash', slug: 'programming' },
-        { id: '2', name: 'Dizayn', slug: 'design' },
-        { id: '3', name: 'Marketing', slug: 'marketing' },
-        { id: '4', name: 'Biznes', slug: 'business' },
-      ];
-
-      const sampleCourses: Course[] = [
-        {
-          id: '1',
-          title: 'React Native Asoslari',
-          description: 'Mobile ilovalar yaratishni o\'rganish',
-          short_description: 'React Native bilan mobile development',
-          thumbnail_url: 'https://picsum.photos/300/200?random=1',
-          price: 150000,
-          original_price: 200000,
-          instructor: {
-            id: '1',
-            username: 'instructor1',
-            full_name: 'Aziz Karimov',
-            avatar_url: 'https://picsum.photos/100/100?random=1'
-          },
-          category: {
-            id: '1',
-            name: 'Dasturlash',
-            slug: 'programming'
-          },
-          level: 'Boshlang\'ich',
-          duration_minutes: 1200,
-          rating: 4.8,
-          total_reviews: 45,
-          total_students: 156,
-          is_featured: true,
-          status: 'approved' as const,
-          lessons: [],
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        },
-        {
-          id: '2',
-          title: 'Flutter Mobil Dasturlash',
-          description: 'Cross-platform mobile ilovalar yaratish',
-          short_description: 'Flutter bilan iOS va Android ilovalar',
-          thumbnail_url: 'https://picsum.photos/300/200?random=2',
-          price: 180000,
-          instructor: {
-            id: '2',
-            username: 'instructor2',
-            full_name: 'Madina Usmonova',
-            avatar_url: 'https://picsum.photos/100/100?random=2'
-          },
-          category: {
-            id: '1',
-            name: 'Dasturlash',
-            slug: 'programming'
-          },
-          level: 'O\'rta',
-          duration_minutes: 1800,
-          rating: 4.9,
-          total_reviews: 67,
-          total_students: 234,
-          is_featured: false,
-          status: 'approved' as const,
-          lessons: [],
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        },
-        {
-          id: '3',
-          title: 'UI/UX Dizayn Asoslari',
-          description: 'Foydalanuvchi interfeysi va tajribasi dizayni',
-          short_description: 'Zamonaviy UI/UX dizayn printsiplari',
-          thumbnail_url: 'https://picsum.photos/300/200?random=3',
-          price: 120000,
-          instructor: {
-            id: '3',
-            username: 'instructor3',
-            full_name: 'Jasur Toshev',
-            avatar_url: 'https://picsum.photos/100/100?random=3'
-          },
-          category: {
-            id: '2',
-            name: 'Dizayn',
-            slug: 'design'
-          },
-          level: 'Boshlang\'ich',
-          duration_minutes: 900,
-          rating: 4.7,
-          total_reviews: 89,
-          total_students: 298,
-          is_featured: true,
-          status: 'approved' as const,
-          lessons: [],
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        },
-        {
-          id: '4',
-          title: 'Digital Marketing Strategiyalari',
-          description: 'Raqamli marketing va SMM',
-          short_description: 'Online biznesni rivojlantirish usullari',
-          thumbnail_url: 'https://picsum.photos/300/200?random=4',
-          price: 100000,
-          instructor: {
-            id: '4',
-            username: 'instructor4',
-            full_name: 'Nilufar Rahimova',
-            avatar_url: 'https://picsum.photos/100/100?random=4'
-          },
-          category: {
-            id: '3',
-            name: 'Marketing',
-            slug: 'marketing'
-          },
-          level: 'O\'rta',
-          duration_minutes: 1500,
-          rating: 4.6,
-          total_reviews: 134,
-          total_students: 567,
-          is_featured: false,
-          status: 'approved' as const,
-          lessons: [],
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        },
-        {
-          id: '5',
-          title: 'Startup Yaratish',
-          description: 'Noldan biznes qurish va rivojlantirish',
-          short_description: 'Muvaffaqiyatli startup yaratish sirlari',
-          thumbnail_url: 'https://picsum.photos/300/200?random=5',
-          price: 250000,
-          instructor: {
-            id: '5',
-            username: 'instructor5',
-            full_name: 'Botir Aliyev',
-            avatar_url: 'https://picsum.photos/100/100?random=5'
-          },
-          category: {
-            id: '4',
-            name: 'Biznes',
-            slug: 'business'
-          },
-          level: 'Yuqori',
-          duration_minutes: 2400,
-          rating: 4.9,
-          total_reviews: 78,
-          total_students: 145,
-          is_featured: true,
-          status: 'approved' as const,
-          lessons: [],
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }
-      ];
-
-      setCategories(sampleCategories);
-      setCourses(sampleCourses);
-    } catch (error) {
-      console.error('Error loading courses:', error);
-    } finally {
-      setLoading(false);
+    if (categoryId) {
+      setSelectedCategory(categoryId);
     }
-  };
+  }, [categoryId]);
+
+  useEffect(() => {
+    if (error) {
+      console.error('Course error:', error);
+      clearError();
+    }
+  }, [error]);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadData();
+    await fetchCourses();
     setRefreshing(false);
   };
 
@@ -213,34 +58,41 @@ export default function CoursesScreen() {
     router.push(`/course/${courseId}`);
   };
 
-  const renderCategoryFilter = () => (
-    <View style={styles.categoryFilter}>
-      <ScrollView 
-        horizontal 
-        showsHorizontalScrollIndicator={false}
-        style={styles.categoryScroll}
-        contentContainerStyle={styles.categoryContainer}
-      >
-        {categories.map((category) => (
-          <TouchableOpacity
-            key={category.id}
-            style={[
-              styles.categoryButton,
-              selectedCategory === category.id && styles.selectedCategoryButton
-            ]}
-            onPress={() => setSelectedCategory(category.id)}
-          >
-            <Text style={[
-              styles.categoryButtonText,
-              selectedCategory === category.id && styles.selectedCategoryButtonText
-            ]}>
-              {category.name}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-    </View>
-  );
+  const renderCategoryFilter = () => {
+    const allCategories = [
+      { id: 'all', name: 'Barchasi', slug: 'all' },
+      ...categories
+    ];
+
+    return (
+      <View style={styles.categoryFilter}>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          style={styles.categoryScroll}
+          contentContainerStyle={styles.categoryContainer}
+        >
+          {allCategories.map((category) => (
+            <TouchableOpacity
+              key={category.id}
+              style={[
+                styles.categoryButton,
+                selectedCategory === category.id && styles.selectedCategoryButton
+              ]}
+              onPress={() => setSelectedCategory(category.id)}
+            >
+              <Text style={[
+                styles.categoryButtonText,
+                selectedCategory === category.id && styles.selectedCategoryButtonText
+              ]}>
+                {category.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+    );
+  };
 
   const renderCourseItem = ({ item }: { item: Course }) => (
     <CourseCard
@@ -250,7 +102,23 @@ export default function CoursesScreen() {
     />
   );
 
-  if (loading) {
+  const renderEmptyState = () => (
+    <View style={styles.emptyContainer}>
+      <MaterialIcons name="school" size={64} color={Colors.light.tabIconDefault} />
+      <Text style={styles.emptyTitle}>Kurslar topilmadi</Text>
+      <Text style={styles.emptySubtitle}>
+        {selectedCategory === 'all' 
+          ? 'Hozircha tasdiqlangan kurslar mavjud emas'
+          : 'Ushbu kategoriyada kurslar mavjud emas'
+        }
+      </Text>
+      <TouchableOpacity style={styles.refreshButton} onPress={onRefresh}>
+        <Text style={styles.refreshButtonText}>Yangilash</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  if (loading && courses.length === 0) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
@@ -272,17 +140,32 @@ export default function CoursesScreen() {
       
       {renderCategoryFilter()}
       
+      <View style={styles.statsHeader}>
+        <Text style={styles.statsText}>
+          {filteredCourses.length} ta kurs mavjud
+          {selectedCategory !== 'all' && (
+            <Text style={styles.categoryName}>
+              {' • ' + categories.find(c => c.id === selectedCategory)?.name}
+            </Text>
+          )}
+        </Text>
+      </View>
+      
       <FlatList
         data={filteredCourses}
         renderItem={renderCourseItem}
         keyExtractor={(item) => item.id}
         style={styles.coursesList}
-        contentContainerStyle={styles.coursesContainer}
+        contentContainerStyle={[
+          styles.coursesContainer,
+          filteredCourses.length === 0 && styles.emptyListContainer
+        ]}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
         showsVerticalScrollIndicator={false}
         numColumns={1}
+        ListEmptyComponent={renderEmptyState}
       />
     </SafeAreaView>
   );
@@ -340,12 +223,28 @@ const styles = StyleSheet.create({
   selectedCategoryButtonText: {
     color: 'white',
   },
+  statsHeader: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: 'white',
+  },
+  statsText: {
+    fontSize: 14,
+    color: Colors.light.tabIconDefault,
+  },
+  categoryName: {
+    fontWeight: '600',
+    color: Colors.light.tint,
+  },
   coursesList: {
     flex: 1,
   },
   coursesContainer: {
     padding: 16,
     gap: 16,
+  },
+  emptyListContainer: {
+    flex: 1,
   },
   courseCard: {
     marginBottom: 0,
@@ -359,5 +258,38 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 16,
     color: Colors.light.tabIconDefault,
+  },
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 40,
+  },
+  emptyTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: Colors.light.text,
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    fontSize: 16,
+    color: Colors.light.tabIconDefault,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  refreshButton: {
+    backgroundColor: Colors.light.tint,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  refreshButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

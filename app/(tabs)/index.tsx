@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -11,113 +12,45 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useCategories } from '@/hooks/useCourses';
 import { useAuth } from '@/hooks/useAuth';
+import { useCourses } from '@/hooks/useCourses';
 import { Colors } from '@/constants/Colors';
 import CourseCard from '@/components/CourseCard';
 import CategoryCard from '@/components/CategoryCard';
-import { Course } from '@/types';
 
 export default function HomeScreen() {
   const { user, profile, loading: authLoading } = useAuth();
+  const { 
+    courses, 
+    categories, 
+    enrolledCourses, 
+    loading, 
+    error,
+    fetchCourses,
+    fetchCategories,
+    clearError 
+  } = useCourses();
   const [refreshing, setRefreshing] = useState(false);
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [enrolledCourses, setEnrolledCourses] = useState<Course[]>([]);
-  const [loading, setLoading] = useState(false);
-  
-  // Use standalone category hook
-  const categoryHooks = useCategories();
-  const categories = categoryHooks?.categories || [];
 
-  // Load sample data when user is authenticated
   useEffect(() => {
-    if (user && !authLoading) {
-      loadSampleData();
+    if (error) {
+      console.error('Course error:', error);
+      clearError();
     }
-  }, [user, authLoading]);
-
-  const loadSampleData = () => {
-    // Sample courses data
-    const sampleCourses: Course[] = [
-      {
-        id: '1',
-        title: 'React Native Asoslari',
-        description: 'Mobile ilovalar yaratishni o\'rganish',
-        short_description: 'React Native bilan mobile development',
-        thumbnail_url: 'https://picsum.photos/300/200?random=1',
-        price: 150000,
-        original_price: 200000,
-        instructor: {
-          id: '1',
-          username: 'instructor1',
-          full_name: 'Aziz Karimov',
-          avatar_url: 'https://picsum.photos/100/100?random=1'
-        },
-        category: {
-          id: '1',
-          name: 'Dasturlash',
-          slug: 'programming'
-        },
-        level: 'Boshlang\'ich',
-        duration_minutes: 1200,
-        rating: 4.8,
-        total_reviews: 45,
-        total_students: 156,
-        is_featured: true,
-        status: 'approved' as const,
-        lessons: [],
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      },
-      {
-        id: '2', 
-        title: 'Flutter Mobil Dasturlash',
-        description: 'Cross-platform mobile ilovalar yaratish',
-        short_description: 'Flutter bilan iOS va Android ilovalar',
-        thumbnail_url: 'https://picsum.photos/300/200?random=2',
-        price: 180000,
-        instructor: {
-          id: '2',
-          username: 'instructor2', 
-          full_name: 'Madina Usmonova',
-          avatar_url: 'https://picsum.photos/100/100?random=2'
-        },
-        category: {
-          id: '1',
-          name: 'Dasturlash',
-          slug: 'programming'
-        },
-        level: 'O\'rta',
-        duration_minutes: 1800,
-        rating: 4.9,
-        total_reviews: 67,
-        total_students: 234,
-        is_featured: true,
-        status: 'approved' as const,
-        lessons: [],
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }
-    ];
-    
-    setCourses(sampleCourses);
-    
-    // Sample enrolled courses
-    if (profile?.role !== 'seller') {
-      setEnrolledCourses([{
-        ...sampleCourses[0],
-        progress: 65,
-        isEnrolled: true
-      }]);
-    }
-  };
+  }, [error]);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    if (user && !authLoading) {
-      loadSampleData();
+    try {
+      await Promise.all([
+        fetchCourses(),
+        fetchCategories()
+      ]);
+    } catch (error) {
+      console.error('Refresh error:', error);
+    } finally {
+      setRefreshing(false);
     }
-    setRefreshing(false);
   };
 
   const handleCoursePress = (courseId: string) => {
@@ -126,7 +59,7 @@ export default function HomeScreen() {
 
   const handleCategoryPress = (categoryId: string) => {
     router.push({
-      pathname: '/courses' as any,
+      pathname: '/courses',
       params: { categoryId }
     });
   };
@@ -142,31 +75,35 @@ export default function HomeScreen() {
     </View>
   );
 
-  const renderCategoriesSection = () => (
-    <View style={styles.section}>
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Kategoriyalar</Text>
-        <TouchableOpacity>
-          <Text style={styles.seeAllText}>Barchasini ko'rish</Text>
-        </TouchableOpacity>
+  const renderCategoriesSection = () => {
+    if (categories.length === 0) return null;
+
+    return (
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Kategoriyalar</Text>
+          <TouchableOpacity onPress={() => router.push('/courses')}>
+            <Text style={styles.seeAllText}>Barchasini ko'rish</Text>
+          </TouchableOpacity>
+        </View>
+        
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.categoriesScroll}
+          contentContainerStyle={styles.categoriesContainer}
+        >
+          {categories.slice(0, 10).map((category) => (
+            <CategoryCard
+              key={category.id}
+              category={category}
+              onPress={() => handleCategoryPress(category.id)}
+            />
+          ))}
+        </ScrollView>
       </View>
-      
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.categoriesScroll}
-        contentContainerStyle={styles.categoriesContainer}
-      >
-        {categories.map((category) => (
-          <CategoryCard
-            key={category.id}
-            category={category}
-            onPress={() => handleCategoryPress(category.id)}
-          />
-        ))}
-      </ScrollView>
-    </View>
-  );
+    );
+  };
 
   const renderEnrolledCoursesSection = () => {
     if (enrolledCourses.length === 0) return null;
@@ -200,32 +137,73 @@ export default function HomeScreen() {
     );
   };
 
-  const renderFeaturedCoursesSection = () => (
-    <View style={styles.section}>
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Tavsiya etiladigan kurslar</Text>
-        <TouchableOpacity>
-          <Text style={styles.seeAllText}>Barchasini ko'rish</Text>
-        </TouchableOpacity>
+  const renderFeaturedCoursesSection = () => {
+    const featuredCourses = courses.filter(course => course.is_featured);
+    
+    if (featuredCourses.length === 0) return null;
+
+    return (
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Tavsiya etiladigan kurslar</Text>
+          <TouchableOpacity onPress={() => router.push('/courses')}>
+            <Text style={styles.seeAllText}>Barchasini ko'rish</Text>
+          </TouchableOpacity>
+        </View>
+        
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.coursesScroll}
+          contentContainerStyle={styles.coursesContainer}
+        >
+          {featuredCourses.slice(0, 10).map((course) => (
+            <CourseCard
+              key={course.id}
+              course={course}
+              onPress={() => handleCoursePress(course.id)}
+              style={styles.horizontalCourseCard}
+            />
+          ))}
+        </ScrollView>
       </View>
-      
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.coursesScroll}
-        contentContainerStyle={styles.coursesContainer}
-      >
-        {courses.slice(0, 5).map((course) => (
-          <CourseCard
-            key={course.id}
-            course={course}
-            onPress={() => handleCoursePress(course.id)}
-            style={styles.horizontalCourseCard}
-          />
-        ))}
-      </ScrollView>
-    </View>
-  );
+    );
+  };
+
+  const renderPopularCoursesSection = () => {
+    const popularCourses = courses
+      .sort((a, b) => b.total_students - a.total_students)
+      .slice(0, 10);
+
+    if (popularCourses.length === 0) return null;
+
+    return (
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Mashhur kurslar</Text>
+          <TouchableOpacity onPress={() => router.push('/courses')}>
+            <Text style={styles.seeAllText}>Barchasini ko'rish</Text>
+          </TouchableOpacity>
+        </View>
+        
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.coursesScroll}
+          contentContainerStyle={styles.coursesContainer}
+        >
+          {popularCourses.map((course) => (
+            <CourseCard
+              key={course.id}
+              course={course}
+              onPress={() => handleCoursePress(course.id)}
+              style={styles.horizontalCourseCard}
+            />
+          ))}
+        </ScrollView>
+      </View>
+    );
+  };
 
   const renderStatsSection = () => {
     if (!profile || profile.role === 'user') return null;
@@ -240,28 +218,38 @@ export default function HomeScreen() {
           <View style={styles.statCard}>
             <MaterialIcons name="school" size={24} color={Colors.light.tint} />
             <Text style={styles.statNumber}>
-              {profile.role === 'seller' ? '3' : courses.length}
+              {profile.role === 'seller' 
+                ? courses.filter(c => c.instructor.id === user?.id).length 
+                : courses.length
+              }
             </Text>
             <Text style={styles.statLabel}>Kurslar</Text>
           </View>
           
           <View style={styles.statCard}>
             <MaterialIcons name="people" size={24} color={Colors.light.tint} />
-            <Text style={styles.statNumber}>156</Text>
+            <Text style={styles.statNumber}>
+              {courses.reduce((total, course) => total + course.total_students, 0)}
+            </Text>
             <Text style={styles.statLabel}>Talabalar</Text>
           </View>
           
           <View style={styles.statCard}>
             <MaterialIcons name="star" size={24} color={Colors.light.tint} />
-            <Text style={styles.statNumber}>4.8</Text>
+            <Text style={styles.statNumber}>
+              {courses.length > 0 
+                ? (courses.reduce((total, course) => total + course.rating, 0) / courses.length).toFixed(1)
+                : '0'
+              }
+            </Text>
             <Text style={styles.statLabel}>Reyting</Text>
           </View>
           
-          {profile.role === 'seller' && (
+          {profile.role === 'admin' && (
             <View style={styles.statCard}>
-              <MaterialIcons name="attach-money" size={24} color={Colors.light.tint} />
-              <Text style={styles.statNumber}>2.5M</Text>
-              <Text style={styles.statLabel}>Daromad</Text>
+              <MaterialIcons name="category" size={24} color={Colors.light.tint} />
+              <Text style={styles.statNumber}>{categories.length}</Text>
+              <Text style={styles.statLabel}>Kategoriyalar</Text>
             </View>
           )}
         </View>
@@ -304,6 +292,7 @@ export default function HomeScreen() {
         {renderCategoriesSection()}
         {renderEnrolledCoursesSection()}
         {renderFeaturedCoursesSection()}
+        {renderPopularCoursesSection()}
       </ScrollView>
     </SafeAreaView>
   );

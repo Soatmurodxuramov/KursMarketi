@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import {
   View,
@@ -14,99 +15,42 @@ import { Colors } from '@/constants/Colors';
 import SearchBar from '@/components/SearchBar';
 import CourseCard from '@/components/CourseCard';
 import { Course } from '@/types';
+import { useCourses } from '@/hooks/useCourses';
 
 export default function SearchScreen() {
+  const { courses, searchCourses } = useCourses();
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [searchResults, setSearchResults] = useState<Course[]>([]);
+  const [hasSearched, setHasSearched] = useState(false);
   const [recentSearches] = useState([
     'React Native',
     'Flutter',
     'UI/UX Dizayn',
     'JavaScript',
-    'Python'
-  ]);
-  const [popularCourses] = useState<Course[]>([
-    {
-      id: '1',
-      title: 'React Native Asoslari',
-      description: 'Mobile ilovalar yaratishni o\'rganish',
-      short_description: 'React Native bilan mobile development',
-      thumbnail_url: 'https://picsum.photos/300/200?random=1',
-      price: 150000,
-      original_price: 200000,
-      instructor: {
-        id: '1',
-        username: 'instructor1',
-        full_name: 'Aziz Karimov',
-        avatar_url: 'https://picsum.photos/100/100?random=1'
-      },
-      category: {
-        id: '1',
-        name: 'Dasturlash',
-        slug: 'programming'
-      },
-      level: 'Boshlang\'ich',
-      duration_minutes: 1200,
-      rating: 4.8,
-      total_reviews: 45,
-      total_students: 156,
-      is_featured: true,
-      status: 'approved' as const,
-      lessons: [],
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    },
-    {
-      id: '3',
-      title: 'UI/UX Dizayn Asoslari',
-      description: 'Foydalanuvchi interfeysi va tajribasi dizayni',
-      short_description: 'Zamonaviy UI/UX dizayn printsiplari',
-      thumbnail_url: 'https://picsum.photos/300/200?random=3',
-      price: 120000,
-      instructor: {
-        id: '3',
-        username: 'instructor3',
-        full_name: 'Jasur Toshev',
-        avatar_url: 'https://picsum.photos/100/100?random=3'
-      },
-      category: {
-        id: '2',
-        name: 'Dizayn',
-        slug: 'design'
-      },
-      level: 'Boshlang\'ich',
-      duration_minutes: 900,
-      rating: 4.7,
-      total_reviews: 89,
-      total_students: 298,
-      is_featured: true,
-      status: 'approved' as const,
-      lessons: [],
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    }
+    'Python',
+    'Mobile Development'
   ]);
 
   const handleSearch = async (query: string) => {
     if (!query.trim()) {
       setSearchResults([]);
+      setHasSearched(false);
       return;
     }
 
     setLoading(true);
+    setHasSearched(true);
     
-    // Simulate API call
-    setTimeout(() => {
-      const filtered = popularCourses.filter(course => 
-        course.title.toLowerCase().includes(query.toLowerCase()) ||
-        course.description.toLowerCase().includes(query.toLowerCase()) ||
-        course.category?.name.toLowerCase().includes(query.toLowerCase())
-      );
-      
-      setSearchResults(filtered);
+    try {
+      const results = await searchCourses(query);
+      setSearchResults(results);
+    } catch (error) {
+      console.error('Search error:', error);
+      setSearchResults([]);
+    } finally {
       setLoading(false);
-    }, 500);
+    }
   };
 
   const handleCoursePress = (courseId: string) => {
@@ -139,7 +83,7 @@ export default function SearchScreen() {
   );
 
   const renderRecentSearches = () => {
-    if (searchQuery.trim() || searchResults.length > 0) return null;
+    if (hasSearched || searchQuery.trim()) return null;
 
     return (
       <View style={styles.section}>
@@ -153,6 +97,7 @@ export default function SearchScreen() {
             >
               <MaterialIcons name="history" size={16} color={Colors.light.tabIconDefault} />
               <Text style={styles.recentText}>{search}</Text>
+              <MaterialIcons name="north-west" size={16} color={Colors.light.tabIconDefault} />
             </TouchableOpacity>
           ))}
         </View>
@@ -161,7 +106,13 @@ export default function SearchScreen() {
   };
 
   const renderPopularCourses = () => {
-    if (searchQuery.trim() || searchResults.length > 0) return null;
+    if (hasSearched || searchQuery.trim()) return null;
+
+    const popularCourses = courses
+      .sort((a, b) => b.total_students - a.total_students)
+      .slice(0, 5);
+
+    if (popularCourses.length === 0) return null;
 
     return (
       <View style={styles.section}>
@@ -177,13 +128,14 @@ export default function SearchScreen() {
           )}
           keyExtractor={(item) => item.id}
           showsVerticalScrollIndicator={false}
+          scrollEnabled={false}
         />
       </View>
     );
   };
 
   const renderSearchResults = () => {
-    if (!searchQuery.trim()) return null;
+    if (!hasSearched) return null;
 
     if (loading) {
       return (
@@ -202,6 +154,16 @@ export default function SearchScreen() {
           <Text style={styles.emptyText}>
             "{searchQuery}" bo'yicha kurslar topilmadi. Boshqa kalit so'zlar bilan qidirib ko'ring.
           </Text>
+          <TouchableOpacity 
+            style={styles.clearButton} 
+            onPress={() => {
+              setSearchQuery('');
+              setHasSearched(false);
+              setSearchResults([]);
+            }}
+          >
+            <Text style={styles.clearButtonText}>Qidiruvni tozalash</Text>
+          </TouchableOpacity>
         </View>
       );
     }
@@ -222,6 +184,7 @@ export default function SearchScreen() {
           )}
           keyExtractor={(item) => item.id}
           showsVerticalScrollIndicator={false}
+          scrollEnabled={false}
         />
       </View>
     );
@@ -287,15 +250,17 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   recentContainer: {
-    gap: 12,
+    gap: 4,
   },
   recentItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
     gap: 12,
   },
   recentText: {
+    flex: 1,
     fontSize: 16,
     color: Colors.light.text,
   },
@@ -332,5 +297,17 @@ const styles = StyleSheet.create({
     color: Colors.light.tabIconDefault,
     textAlign: 'center',
     lineHeight: 22,
+    marginBottom: 24,
+  },
+  clearButton: {
+    backgroundColor: Colors.light.tint,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 6,
+  },
+  clearButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
