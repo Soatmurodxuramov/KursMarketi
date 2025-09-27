@@ -13,19 +13,17 @@ import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../../constants/Colors';
-import { courseService } from '../../services/courseService';
-import { useCourses } from '../../hooks/useCourses';
 import { Course } from '../../types';
 
 export default function CourseDetailScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
   const { id } = useLocalSearchParams();
-  const { purchaseCourse } = useCourses();
   
   const [course, setCourse] = useState<Course | null>(null);
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState(false);
+  const [isEnrolled, setIsEnrolled] = useState(false);
 
   useEffect(() => {
     loadCourse();
@@ -34,9 +32,90 @@ export default function CourseDetailScreen() {
   const loadCourse = async () => {
     if (typeof id === 'string') {
       try {
-        const courseData = await courseService.getCourse(id);
-        setCourse(courseData);
+        // Sample course data with proper structure
+        const sampleCourse: Course = {
+          id: id,
+          title: 'React Native Asoslari',
+          description: `Bu kurs React Native texnologiyasi orqali mobile ilovalar yaratish bo'yicha to'liq ma'lumot beradi. 
+
+Kurs davomida quyidagi mavzularni o'rganasiz:
+• React Native asoslari
+• Navigation va routing  
+• State management
+• API integration
+• Performance optimization
+• Testing va debugging
+
+Kurs oxirida siz professional darajada mobile ilovalar yarata olasiz.`,
+          short_description: 'React Native bilan mobile development',
+          thumbnail_url: 'https://picsum.photos/400/300?random=1',
+          price: 150000,
+          original_price: 200000,
+          instructor: {
+            id: '1',
+            username: 'instructor1',
+            full_name: 'Aziz Karimov',
+            avatar_url: 'https://picsum.photos/100/100?random=1'
+          },
+          category: {
+            id: '1',
+            name: 'Dasturlash',
+            slug: 'programming'
+          },
+          level: 'Boshlang\'ich',
+          duration_minutes: 1200,
+          rating: 4.8,
+          total_reviews: 45,
+          total_students: 156,
+          is_featured: true,
+          status: 'approved' as const,
+          lessons: [
+            {
+              id: '1',
+              course_id: id,
+              title: 'Kirish va React Native o\'rnatish',
+              description: 'React Native muhitini o\'rnatish va birinchi loyiha yaratish',
+              video_url: 'https://example.com/video1.mp4',
+              duration_minutes: 45,
+              order_index: 1,
+              is_preview: true,
+              resources_urls: [],
+              created_at: new Date().toISOString()
+            },
+            {
+              id: '2',
+              course_id: id,
+              title: 'Komponentlar va JSX',
+              description: 'React Native komponentlari va JSX sintaksisi',
+              video_url: 'https://example.com/video2.mp4',
+              duration_minutes: 60,
+              order_index: 2,
+              is_preview: false,
+              resources_urls: [],
+              created_at: new Date().toISOString()
+            },
+            {
+              id: '3',
+              course_id: id,
+              title: 'State va Props',
+              description: 'Ma\'lumotlarni boshqarish va komponentlar orasida uzatish',
+              video_url: 'https://example.com/video3.mp4',
+              duration_minutes: 55,
+              order_index: 3,
+              is_preview: false,
+              resources_urls: [],
+              created_at: new Date().toISOString()
+            }
+          ],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+        
+        setCourse(sampleCourse);
+        // Check if user is enrolled (simulate for demo)
+        setIsEnrolled(Math.random() > 0.5);
       } catch (error) {
+        console.error('Error loading course:', error);
         Alert.alert('Xatolik', 'Kurs ma\'lumotlarini yuklashda xatolik yuz berdi');
       } finally {
         setLoading(false);
@@ -57,16 +136,15 @@ export default function CourseDetailScreen() {
           onPress: async () => {
             setPurchasing(true);
             try {
-              const success = await purchaseCourse(course.id);
-              if (success) {
-                Alert.alert('Muvaffaqiyat!', 'Kurs muvaffaqiyatli sotib olindi!', [
-                  { text: 'OK', onPress: () => router.back() }
-                ]);
-              } else {
-                Alert.alert('Xatolik', 'Kursni sotib olishda xatolik yuz berdi');
-              }
-            } finally {
+              // Simulate purchase
+              setTimeout(() => {
+                setIsEnrolled(true);
+                setPurchasing(false);
+                Alert.alert('Muvaffaqiyat!', 'Kurs muvaffaqiyatli sotib olindi!');
+              }, 2000);
+            } catch (error) {
               setPurchasing(false);
+              Alert.alert('Xatolik', 'Kursni sotib olishda xatolik yuz berdi');
             }
           }
         }
@@ -75,7 +153,7 @@ export default function CourseDetailScreen() {
   };
 
   const handleLessonPress = (lessonId: string) => {
-    if (course && course.isEnrolled) {
+    if (course && isEnrolled) {
       router.push(`/lesson/${course.id}/${lessonId}`);
     } else {
       Alert.alert('Kursga yoziling', 'Video darslarni ko\'rish uchun avval kursga yozilib oling');
@@ -90,6 +168,9 @@ export default function CourseDetailScreen() {
     return (
       <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
         <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={[styles.loadingText, { color: colors.text }]}>
+          Kurs yuklanmoqda...
+        </Text>
       </View>
     );
   }
@@ -97,9 +178,16 @@ export default function CourseDetailScreen() {
   if (!course) {
     return (
       <View style={[styles.errorContainer, { backgroundColor: colors.background }]}>
+        <MaterialIcons name="error" size={64} color={colors.text} />
         <Text style={[styles.errorText, { color: colors.text }]}>
           Kurs topilmadi
         </Text>
+        <TouchableOpacity 
+          style={[styles.backButton, { backgroundColor: colors.primary }]}
+          onPress={() => router.back()}
+        >
+          <Text style={styles.backButtonText}>Orqaga</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -107,9 +195,17 @@ export default function CourseDetailScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView showsVerticalScrollIndicator={false}>
+        {/* Header */}
+        <View style={[styles.header, { backgroundColor: colors.card }]}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <MaterialIcons name="arrow-back" size={24} color={colors.text} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>Kurs tafsilotlari</Text>
+        </View>
+
         {/* Course Image */}
         <Image
-          source={{ uri: course.thumbnail }}
+          source={{ uri: course.thumbnail_url }}
           style={styles.thumbnail}
           contentFit="cover"
         />
@@ -123,16 +219,16 @@ export default function CourseDetailScreen() {
           <View style={styles.metaContainer}>
             <View style={styles.instructorInfo}>
               <Image
-                source={{ uri: course.instructor.avatar }}
+                source={{ uri: course.instructor.avatar_url }}
                 style={styles.instructorAvatar}
                 contentFit="cover"
               />
               <View>
                 <Text style={[styles.instructorName, { color: colors.text }]}>
-                  {course.instructor.name}
+                  {course.instructor.full_name}
                 </Text>
                 <Text style={[styles.instructorBio, { color: colors.text }]}>
-                  {course.instructor.bio}
+                  Tajribali o'qituvchi
                 </Text>
               </View>
             </View>
@@ -141,13 +237,13 @@ export default function CourseDetailScreen() {
               <View style={styles.statItem}>
                 <MaterialIcons name="star" size={16} color="#fbbf24" />
                 <Text style={[styles.statText, { color: colors.text }]}>
-                  {course.rating} ({course.reviewCount})
+                  {course.rating} ({course.total_reviews})
                 </Text>
               </View>
               <View style={styles.statItem}>
                 <MaterialIcons name="access-time" size={16} color={colors.text} />
                 <Text style={[styles.statText, { color: colors.text }]}>
-                  {course.duration}
+                  {Math.round(course.duration_minutes / 60)}h {course.duration_minutes % 60}m
                 </Text>
               </View>
               <View style={styles.statItem}>
@@ -166,13 +262,21 @@ export default function CourseDetailScreen() {
 
           {/* Tags */}
           <View style={styles.tagsContainer}>
-            {course.tags.map((tag, index) => (
-              <View key={index} style={[styles.tag, { backgroundColor: colors.secondary }]}>
-                <Text style={[styles.tagText, { color: colors.text }]}>
-                  {tag}
-                </Text>
-              </View>
-            ))}
+            <View style={[styles.tag, { backgroundColor: colors.secondary }]}>
+              <Text style={[styles.tagText, { color: colors.text }]}>
+                {course.category.name}
+              </Text>
+            </View>
+            <View style={[styles.tag, { backgroundColor: colors.secondary }]}>
+              <Text style={[styles.tagText, { color: colors.text }]}>
+                {course.level}
+              </Text>
+            </View>
+            <View style={[styles.tag, { backgroundColor: colors.secondary }]}>
+              <Text style={[styles.tagText, { color: colors.text }]}>
+                Mobile Development
+              </Text>
+            </View>
           </View>
 
           {/* Lessons */}
@@ -188,7 +292,7 @@ export default function CourseDetailScreen() {
                   { backgroundColor: colors.card, borderColor: colors.border }
                 ]}
                 onPress={() => handleLessonPress(lesson.id)}
-                disabled={!course.isEnrolled}
+                disabled={!isEnrolled && !lesson.is_preview}
               >
                 <View style={styles.lessonLeft}>
                   <View style={[styles.lessonNumber, { backgroundColor: colors.primary }]}>
@@ -201,16 +305,12 @@ export default function CourseDetailScreen() {
                       {lesson.title}
                     </Text>
                     <Text style={[styles.lessonDuration, { color: colors.text }]}>
-                      {lesson.duration}
+                      {lesson.duration_minutes} daqiqa
                     </Text>
                   </View>
                 </View>
-                {course.isEnrolled ? (
-                  lesson.isWatched ? (
-                    <MaterialIcons name="check-circle" size={20} color={colors.success} />
-                  ) : (
-                    <MaterialIcons name="play-circle-outline" size={20} color={colors.primary} />
-                  )
+                {isEnrolled || lesson.is_preview ? (
+                  <MaterialIcons name="play-circle-outline" size={20} color={colors.primary} />
                 ) : (
                   <MaterialIcons name="lock" size={20} color={colors.text} />
                 )}
@@ -221,12 +321,12 @@ export default function CourseDetailScreen() {
       </ScrollView>
 
       {/* Purchase Button */}
-      {!course.isEnrolled && (
+      {!isEnrolled && (
         <View style={[styles.purchaseContainer, { backgroundColor: colors.background, borderTopColor: colors.border }]}>
           <View style={styles.priceContainer}>
-            {course.originalPrice && (
+            {course.original_price && (
               <Text style={[styles.originalPrice, { color: colors.text }]}>
-                {formatPrice(course.originalPrice)}
+                {formatPrice(course.original_price)}
               </Text>
             )}
             <Text style={[styles.currentPrice, { color: colors.primary }]}>
@@ -251,6 +351,14 @@ export default function CourseDetailScreen() {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Enrolled Badge */}
+      {isEnrolled && (
+        <View style={[styles.enrolledContainer, { backgroundColor: '#10b981' }]}>
+          <MaterialIcons name="check-circle" size={20} color="white" />
+          <Text style={styles.enrolledText}>Siz ushbu kursga yozilgansiz</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -259,19 +367,52 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  backBtn: {
+    padding: 4,
+    marginRight: 12,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    gap: 16,
+  },
+  loadingText: {
+    fontSize: 16,
   },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    gap: 16,
+    paddingHorizontal: 32,
   },
   errorText: {
     fontSize: 18,
     fontWeight: '500',
+    textAlign: 'center',
+  },
+  backButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  backButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   thumbnail: {
     width: '100%',
@@ -420,6 +561,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   purchaseButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  enrolledContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    gap: 8,
+  },
+  enrolledText: {
     color: 'white',
     fontSize: 16,
     fontWeight: 'bold',

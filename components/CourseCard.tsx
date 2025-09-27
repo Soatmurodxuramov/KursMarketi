@@ -48,7 +48,7 @@ export default function CourseCard({ course, onPress, style, showProgress = fals
     >
       <View style={styles.imageContainer}>
         <Image
-          source={{ uri: course.thumbnail }}
+          source={{ uri: course.thumbnail_url || 'https://via.placeholder.com/300x200' }}
           style={styles.thumbnail}
           contentFit="cover"
           placeholder="https://via.placeholder.com/300x200"
@@ -76,13 +76,13 @@ export default function CourseCard({ course, onPress, style, showProgress = fals
         
         <View style={styles.instructorRow}>
           <Image
-            source={{ uri: course.instructor.avatar }}
+            source={{ uri: course.instructor.avatar_url || 'https://via.placeholder.com/24' }}
             style={styles.instructorAvatar}
             contentFit="cover"
             placeholder="https://via.placeholder.com/24"
           />
           <Text style={styles.instructorName}>
-            {course.instructor.name}
+            {course.instructor.full_name || course.instructor.username}
           </Text>
         </View>
         
@@ -93,14 +93,14 @@ export default function CourseCard({ course, onPress, style, showProgress = fals
               {course.rating.toFixed(1)}
             </Text>
             <Text style={styles.reviewCount}>
-              ({course.reviewCount})
+              ({course.total_reviews || 0})
             </Text>
           </View>
           
           <View style={styles.duration}>
             <MaterialIcons name="access-time" size={14} color={Colors.light.tabIconDefault} />
             <Text style={styles.durationText}>
-              {course.duration}
+              {Math.round(course.duration_minutes / 60)}h {course.duration_minutes % 60}m
             </Text>
           </View>
         </View>
@@ -111,7 +111,9 @@ export default function CourseCard({ course, onPress, style, showProgress = fals
           </View>
           
           <View style={styles.categoryBadge}>
-            <Text style={styles.categoryText}>{course.category}</Text>
+            <Text style={styles.categoryText}>
+              {course.category?.name || 'Kategoriya'}
+            </Text>
           </View>
         </View>
         
