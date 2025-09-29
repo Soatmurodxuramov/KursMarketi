@@ -1,117 +1,190 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
   ActivityIndicator,
   Alert,
-  Platform,
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
+import { router, useLocalSearchParams } from 'expo-router';
+import { Video, ResizeMode } from 'expo-av';
 import { Colors } from '@/constants/Colors';
-import { Lesson } from '@/types';
+import supabase from '@/services/supabase';
+import { useAuth } from '@/hooks/useAuth';
+
+interface Lesson {
+  id: string;
+  course_id: string;
+  title: string;
+  description: string;
+  video_url: string;
+  duration_minutes: number;
+  order_index: number;
+  is_preview: boolean;
+  resources_urls: string[];
+  created_at: string;
+}
+
+interface Course {
+  id: string;
+  title: string;
+  lessons: Lesson[];
+}
 
 const { width: screenWidth } = Dimensions.get('window');
 
-// Web-compatible alert
-const showAlert = (title: string, message: string, onConfirm?: () => void) => {
-  if (Platform.OS === 'web') {
-    if (window.confirm(`${title}\n\n${message}`)) {
-      onConfirm?.();
-    }
-  } else {
-    Alert.alert(title, message, onConfirm ? [{ text: 'OK', onPress: onConfirm }] : undefined);
-  }
-};
-
 export default function LessonScreen() {
   const { courseId, lessonId } = useLocalSearchParams<{ courseId: string; lessonId: string }>();
-  const [lesson, setLesson] = useState<Lesson | null>(null);
+  const { user } = useAuth();
+  const videoRef = useRef<Video>(null);
+  
+  const [course, setCourse] = useState<Course | null>(null);
+  const [currentLesson, setCurrentLesson] = useState<Lesson | null>(null);
   const [loading, setLoading] = useState(true);
-  const [playing, setPlaying] = useState(false);
+  const [videoLoading, setVideoLoading] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [showNotes, setShowNotes] = useState(false);
-  const [notes, setNotes] = useState('');
+  const [hasAccess, setHasAccess] = useState(false);
 
   useEffect(() => {
-    loadLessonData();
+    if (courseId && lessonId) {
+      loadCourseAndLesson();
+    }
   }, [courseId, lessonId]);
 
-  const loadLessonData = async () => {
-    setLoading(true);
+  const loadCourseAndLesson = async () => {
+    if (!courseId || !lessonId) return;
+
     try {
-      // Sample lesson data
-      const sampleLesson: Lesson = {
-        id: lessonId || '1',
-        course_id: courseId,
-        title: `Dars ${lessonId}: React Native asoslari`,
-        description: `Bu darsda React Native asosiy tushunchalari, komponentlar yaratish va ulardan foydalanish haqida batafsil ma'lumot olasiz. Shuningdek, State va Props tushunchalarini ham o'rganamiz.
+      setLoading(true);
 
-Dars davomida quyidagi mavzularni ko'rib chiqamiz:
-1. React Native komponentlari
-2. State management
-3. Props va ulardan foydalanish
-4. Event handling
-5. Styling va layout
+      // Load course with lessons
+      const { data: courseData, error: courseError } = await supabase
+        .from('courses')
+        .select(`
+          *,
+          lessons:lessons(*)
+        `)
+        .eq('id', courseId)
+        .single();
 
-Ushbu bilimlar React Native ilovalar yaratishning poydevori hisoblanadi.`,
-        video_url: 'https://example.com/video.mp4',
-        duration_minutes: 45,
-        order_index: parseInt(lessonId || '1'),
-        is_preview: lessonId === '1',
-        resources_urls: [
-          'https://example.com/lesson-notes.pdf',
-          'https://example.com/source-code.zip'
-        ],
-        created_at: new Date().toISOString()
-      };
+      if (courseError) {
+        throw courseError;
+      }
 
-      setLesson(sampleLesson);
-      // Simulate user progress
-      setProgress(Math.random() * 100);
-    } catch (error) {
+      setCourse(courseData);
+
+      // Find current lesson
+      const lesson = courseData.lessons.find((l: Lesson) => l.id === lessonId);
+      if (!lesson) {
+        throw new Error('Lesson not found');
+      }
+      
+      setCurrentLesson(lesson);
+
+      // Check access - user must be enrolled or lesson is preview
+      if (user) {
+        if (lesson.is_preview) {
+          setHasAccess(true);
+        } else {
+          const { data: enrollment } = await supabase
+            .from('enrollments')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('course_id', courseId)
+            .eq('status', 'active')
+            .single();
+
+          setHasAccess(!!enrollment);
+        }
+      } else {
+        setHasAccess(lesson.is_preview);
+      }
+
+    } catch (error: any) {
       console.error('Error loading lesson:', error);
-      showAlert('Xatolik', 'Dars ma\'lumotlarini yuklashda xatolik yuz berdi.');
+      Alert.alert('Xatolik', 'Dars ma\'lumotlarini yuklashda xatolik yuz berdi');
     } finally {
       setLoading(false);
     }
   };
 
-  const handlePlayPause = () => {
-    setPlaying(!playing);
-    // In real app, control video player
-  };
+  const markLessonProgress = async () => {
+    if (!user || !courseId || !lessonId || !hasAccess) return;
 
-  const handleMarkComplete = () => {
-    showAlert(
-      'Darsni tugatish',
-      'Bu darsni tugatilgan deb belgilamoqchimisiz?',
-      () => {
-        setProgress(100);
-        showAlert('Tabriklaymiz!', 'Dars muvaffaqiyatli yakunlandi!');
+    try {
+      // Mark lesson as completed
+      const { error } = await supabase
+        .from('lesson_progress')
+        .upsert({
+          user_id: user.id,
+          course_id: courseId,
+          lesson_id: lessonId,
+          completed_at: new Date().toISOString()
+        });
+
+      if (error) {
+        console.error('Error marking progress:', error);
       }
-    );
-  };
-
-  const handleNextLesson = () => {
-    const nextLessonId = (parseInt(lessonId || '1') + 1).toString();
-    router.push(`/lesson/${courseId}/${nextLessonId}`);
-  };
-
-  const handlePreviousLesson = () => {
-    if (parseInt(lessonId || '1') > 1) {
-      const prevLessonId = (parseInt(lessonId || '1') - 1).toString();
-      router.push(`/lesson/${courseId}/${prevLessonId}`);
+    } catch (error) {
+      console.error('Error marking lesson progress:', error);
     }
   };
 
-  const handleDownloadResource = (url: string) => {
-    showAlert('Yuklab olish', 'Fayl yuklab olinmoqda...');
+  const handlePlaybackStatusUpdate = (status: any) => {
+    if (status.isLoaded) {
+      setVideoLoading(false);
+      setIsPlaying(status.isPlaying);
+      
+      if (status.durationMillis) {
+        setProgress((status.positionMillis / status.durationMillis) * 100);
+      }
+      
+      // Mark progress when 80% completed
+      if (status.positionMillis / status.durationMillis >= 0.8) {
+        markLessonProgress();
+      }
+    }
+  };
+
+  const togglePlayback = () => {
+    if (videoRef.current) {
+      if (isPlaying) {
+        videoRef.current.pauseAsync();
+      } else {
+        videoRef.current.playAsync();
+      }
+    }
+  };
+
+  const navigateToLesson = (lesson: Lesson) => {
+    if (lesson.is_preview || hasAccess) {
+      router.push(`/lesson/${courseId}/${lesson.id}`);
+    } else {
+      Alert.alert('Kursga yoziling', 'Bu darsni ko\'rish uchun kursga yozilib oling');
+    }
+  };
+
+  const getNextLesson = (): Lesson | null => {
+    if (!course || !currentLesson) return null;
+    
+    const sortedLessons = course.lessons.sort((a, b) => a.order_index - b.order_index);
+    const currentIndex = sortedLessons.findIndex(l => l.id === currentLesson.id);
+    
+    return currentIndex < sortedLessons.length - 1 ? sortedLessons[currentIndex + 1] : null;
+  };
+
+  const getPrevLesson = (): Lesson | null => {
+    if (!course || !currentLesson) return null;
+    
+    const sortedLessons = course.lessons.sort((a, b) => a.order_index - b.order_index);
+    const currentIndex = sortedLessons.findIndex(l => l.id === currentLesson.id);
+    
+    return currentIndex > 0 ? sortedLessons[currentIndex - 1] : null;
   };
 
   if (loading) {
@@ -125,13 +198,36 @@ Ushbu bilimlar React Native ilovalar yaratishning poydevori hisoblanadi.`,
     );
   }
 
-  if (!lesson) {
+  if (!hasAccess) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.noAccessContainer}>
+          <MaterialIcons name="lock" size={64} color={Colors.light.tabIconDefault} />
+          <Text style={styles.noAccessTitle}>Dostup yo'q</Text>
+          <Text style={styles.noAccessText}>
+            Bu darsni ko'rish uchun kursga yozilib oling yoki bu bepul dars emas.
+          </Text>
+          <TouchableOpacity 
+            style={styles.backButton}
+            onPress={() => router.back()}
+          >
+            <Text style={styles.backButtonText}>Orqaga</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!currentLesson) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.errorContainer}>
           <MaterialIcons name="error" size={64} color={Colors.light.tabIconDefault} />
-          <Text style={styles.errorText}>Dars topilmadi</Text>
-          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+          <Text style={styles.errorTitle}>Dars topilmadi</Text>
+          <TouchableOpacity 
+            style={styles.backButton}
+            onPress={() => router.back()}
+          >
             <Text style={styles.backButtonText}>Orqaga</Text>
           </TouchableOpacity>
         </View>
@@ -143,143 +239,160 @@ Ushbu bilimlar React Native ilovalar yaratishning poydevori hisoblanadi.`,
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.headerButton}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <MaterialIcons name="arrow-back" size={24} color={Colors.light.text} />
         </TouchableOpacity>
-        
         <Text style={styles.headerTitle} numberOfLines={1}>
-          {lesson.title}
+          {currentLesson.title}
         </Text>
-        
-        <TouchableOpacity 
-          style={styles.headerButton}
-          onPress={() => setShowNotes(!showNotes)}
-        >
-          <MaterialIcons 
-            name={showNotes ? "note" : "note-add"} 
-            size={24} 
-            color={Colors.light.text} 
-          />
+        <TouchableOpacity style={styles.menuBtn}>
+          <MaterialIcons name="more-vert" size={24} color={Colors.light.text} />
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.scrollView}>
-        {/* Video Player Placeholder */}
-        <View style={styles.videoContainer}>
-          <View style={styles.videoPlaceholder}>
-            <TouchableOpacity style={styles.playButton} onPress={handlePlayPause}>
+      {/* Video Player */}
+      <View style={styles.videoContainer}>
+        {currentLesson.video_url ? (
+          <Video
+            ref={videoRef}
+            source={{ uri: currentLesson.video_url }}
+            style={styles.video}
+            resizeMode={ResizeMode.CONTAIN}
+            shouldPlay={false}
+            isLooping={false}
+            onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
+          />
+        ) : (
+          <View style={styles.noVideoContainer}>
+            <MaterialIcons name="play-disabled" size={64} color={Colors.light.tabIconDefault} />
+            <Text style={styles.noVideoText}>Video mavjud emas</Text>
+          </View>
+        )}
+        
+        {videoLoading && (
+          <View style={styles.videoLoadingOverlay}>
+            <ActivityIndicator size="large" color="white" />
+          </View>
+        )}
+        
+        {/* Video Controls */}
+        {currentLesson.video_url && (
+          <View style={styles.videoControls}>
+            <TouchableOpacity onPress={togglePlayback} style={styles.playButton}>
               <MaterialIcons 
-                name={playing ? "pause" : "play-arrow"} 
-                size={48} 
+                name={isPlaying ? "pause" : "play-arrow"} 
+                size={32} 
                 color="white" 
               />
             </TouchableOpacity>
-            
-            {/* Video Controls */}
-            <View style={styles.videoControls}>
-              <View style={styles.progressContainer}>
-                <View style={styles.progressBar}>
-                  <View style={[styles.progressFill, { width: `${progress}%` }]} />
-                </View>
-                <Text style={styles.progressText}>{Math.round(progress)}%</Text>
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* Lesson Info */}
-        <View style={styles.lessonInfo}>
-          <Text style={styles.lessonTitle}>{lesson.title}</Text>
-          
-          <View style={styles.metaInfo}>
-            <View style={styles.metaItem}>
-              <MaterialIcons name="access-time" size={16} color={Colors.light.tabIconDefault} />
-              <Text style={styles.metaText}>{lesson.duration_minutes} daqiqa</Text>
-            </View>
-            
-            <View style={styles.metaItem}>
-              <MaterialIcons name="visibility" size={16} color={Colors.light.tabIconDefault} />
-              <Text style={styles.metaText}>Dars {lesson.order_index}</Text>
-            </View>
-          </View>
-
-          <Text style={styles.lessonDescription}>{lesson.description}</Text>
-        </View>
-
-        {/* Resources */}
-        {lesson.resources_urls && lesson.resources_urls.length > 0 && (
-          <View style={styles.resourcesSection}>
-            <Text style={styles.sectionTitle}>Qo'shimcha materiallar</Text>
-            {lesson.resources_urls.map((url, index) => (
-              <TouchableOpacity 
-                key={index}
-                style={styles.resourceItem}
-                onPress={() => handleDownloadResource(url)}
-              >
-                <MaterialIcons name="file-download" size={20} color={Colors.light.tint} />
-                <Text style={styles.resourceText}>
-                  {url.includes('.pdf') ? 'Dars konspekti (PDF)' : 'Manba kodlari (ZIP)'}
-                </Text>
-                <MaterialIcons name="chevron-right" size={20} color={Colors.light.tabIconDefault} />
-              </TouchableOpacity>
-            ))}
           </View>
         )}
-
-        {/* Notes Section */}
-        {showNotes && (
-          <View style={styles.notesSection}>
-            <Text style={styles.sectionTitle}>Eslatmalar</Text>
-            <View style={styles.notesContainer}>
-              <Text style={styles.notesPlaceholder}>
-                Bu yerda dars davomida yozgan eslatmalaringizni ko'rishingiz mumkin...
-              </Text>
-            </View>
+        
+        {/* Progress Bar */}
+        <View style={styles.progressContainer}>
+          <View style={styles.progressBar}>
+            <View 
+              style={[styles.progressFill, { width: `${progress}%` }]} 
+            />
           </View>
-        )}
-      </ScrollView>
-
-      {/* Bottom Navigation */}
-      <View style={styles.bottomNav}>
-        <TouchableOpacity 
-          style={[styles.navButton, parseInt(lessonId || '1') === 1 && styles.navButtonDisabled]}
-          onPress={handlePreviousLesson}
-          disabled={parseInt(lessonId || '1') === 1}
-        >
-          <MaterialIcons name="skip-previous" size={24} color={
-            parseInt(lessonId || '1') === 1 ? Colors.light.tabIconDefault : Colors.light.tint
-          } />
-          <Text style={[
-            styles.navButtonText,
-            parseInt(lessonId || '1') === 1 && styles.navButtonTextDisabled
-          ]}>
-            Oldingi
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[styles.completeButton, progress === 100 && styles.completedButton]}
-          onPress={handleMarkComplete}
-          disabled={progress === 100}
-        >
-          <MaterialIcons 
-            name={progress === 100 ? "check-circle" : "check"} 
-            size={20} 
-            color="white" 
-          />
-          <Text style={styles.completeButtonText}>
-            {progress === 100 ? 'Tugatilgan' : 'Tugatish'}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={styles.navButton}
-          onPress={handleNextLesson}
-        >
-          <MaterialIcons name="skip-next" size={24} color={Colors.light.tint} />
-          <Text style={styles.navButtonText}>Keyingi</Text>
-        </TouchableOpacity>
+        </View>
       </View>
+
+      {/* Lesson Info */}
+      <View style={styles.lessonInfo}>
+        <Text style={styles.lessonTitle}>{currentLesson.title}</Text>
+        <Text style={styles.lessonDuration}>
+          {currentLesson.duration_minutes} daqiqa
+          {currentLesson.is_preview && ' • Bepul ko\'rish'}
+        </Text>
+        {currentLesson.description && (
+          <Text style={styles.lessonDescription}>
+            {currentLesson.description}
+          </Text>
+        )}
+      </View>
+
+      {/* Navigation */}
+      <View style={styles.navigationContainer}>
+        {getPrevLesson() && (
+          <TouchableOpacity 
+            style={[styles.navButton, styles.prevButton]}
+            onPress={() => {
+              const prevLesson = getPrevLesson();
+              if (prevLesson) navigateToLesson(prevLesson);
+            }}
+          >
+            <MaterialIcons name="skip-previous" size={20} color={Colors.light.tint} />
+            <Text style={styles.navButtonText}>Oldingi dars</Text>
+          </TouchableOpacity>
+        )}
+        
+        {getNextLesson() && (
+          <TouchableOpacity 
+            style={[styles.navButton, styles.nextButton]}
+            onPress={() => {
+              const nextLesson = getNextLesson();
+              if (nextLesson) navigateToLesson(nextLesson);
+            }}
+          >
+            <Text style={styles.navButtonText}>Keyingi dars</Text>
+            <MaterialIcons name="skip-next" size={20} color="white" />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Course Lessons List */}
+      {course && course.lessons && (
+        <View style={styles.lessonsContainer}>
+          <Text style={styles.lessonsTitle}>Kurs darslari</Text>
+          {course.lessons
+            .sort((a, b) => a.order_index - b.order_index)
+            .map((lesson, index) => (
+            <TouchableOpacity
+              key={lesson.id}
+              style={[
+                styles.lessonItem,
+                lesson.id === currentLesson.id && styles.currentLessonItem
+              ]}
+              onPress={() => navigateToLesson(lesson)}
+              disabled={!lesson.is_preview && !hasAccess}
+            >
+              <View style={styles.lessonItemLeft}>
+                <View style={[
+                  styles.lessonNumber,
+                  lesson.id === currentLesson.id && styles.currentLessonNumber
+                ]}>
+                  <Text style={styles.lessonNumberText}>
+                    {lesson.order_index}
+                  </Text>
+                </View>
+                <View style={styles.lessonItemInfo}>
+                  <Text style={[
+                    styles.lessonItemTitle,
+                    lesson.id === currentLesson.id && styles.currentLessonTitle
+                  ]}>
+                    {lesson.title}
+                  </Text>
+                  <Text style={styles.lessonItemDuration}>
+                    {lesson.duration_minutes} daqiqa
+                    {lesson.is_preview && ' • Bepul'}
+                  </Text>
+                </View>
+              </View>
+              
+              {lesson.is_preview || hasAccess ? (
+                lesson.id === currentLesson.id ? (
+                  <MaterialIcons name="play-arrow" size={20} color={Colors.light.tint} />
+                ) : (
+                  <MaterialIcons name="play-circle-outline" size={20} color={Colors.light.tabIconDefault} />
+                )
+              ) : (
+                <MaterialIcons name="lock" size={20} color={Colors.light.tabIconDefault} />
+              )}
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -298,180 +411,188 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
-  headerButton: {
+  backBtn: {
     padding: 4,
+    marginRight: 12,
   },
   headerTitle: {
     flex: 1,
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
     color: Colors.light.text,
-    marginHorizontal: 12,
   },
-  scrollView: {
-    flex: 1,
+  menuBtn: {
+    padding: 4,
+    marginLeft: 12,
   },
   videoContainer: {
-    backgroundColor: 'black',
-  },
-  videoPlaceholder: {
-    width: screenWidth,
-    height: screenWidth * 9 / 16, // 16:9 aspect ratio
-    backgroundColor: '#000',
-    justifyContent: 'center',
-    alignItems: 'center',
     position: 'relative',
+    backgroundColor: 'black',
+    aspectRatio: 16/9,
   },
-  playButton: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+  video: {
+    flex: 1,
+  },
+  noVideoContainer: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    gap: 16,
+  },
+  noVideoText: {
+    color: Colors.light.tabIconDefault,
+    fontSize: 16,
+  },
+  videoLoadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
   videoControls: {
     position: 'absolute',
-    bottom: 16,
-    left: 16,
-    right: 16,
+    top: '50%',
+    left: '50%',
+    transform: [{ translateX: -25 }, { translateY: -25 }],
+  },
+  playButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   progressContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 4,
   },
   progressBar: {
     flex: 1,
-    height: 4,
     backgroundColor: 'rgba(255,255,255,0.3)',
-    borderRadius: 2,
-    overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
     backgroundColor: Colors.light.tint,
   },
-  progressText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
   lessonInfo: {
-    padding: 20,
     backgroundColor: 'white',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
   },
   lessonTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: 'bold',
     color: Colors.light.text,
-    marginBottom: 12,
+    marginBottom: 8,
   },
-  metaInfo: {
-    flexDirection: 'row',
-    gap: 16,
-    marginBottom: 16,
-  },
-  metaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  metaText: {
+  lessonDuration: {
     fontSize: 14,
     color: Colors.light.tabIconDefault,
+    marginBottom: 12,
   },
   lessonDescription: {
     fontSize: 16,
     color: Colors.light.text,
-    lineHeight: 24,
+    lineHeight: 22,
   },
-  resourcesSection: {
-    backgroundColor: 'white',
-    marginTop: 8,
-    padding: 20,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: Colors.light.text,
-    marginBottom: 16,
-  },
-  resourceItem: {
+  navigationContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
+    justifyContent: 'space-between',
+    padding: 16,
+    backgroundColor: 'white',
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
-  resourceText: {
-    flex: 1,
-    fontSize: 16,
-    color: Colors.light.text,
-    marginLeft: 12,
-  },
-  notesSection: {
-    backgroundColor: 'white',
-    marginTop: 8,
-    padding: 20,
-  },
-  notesContainer: {
-    backgroundColor: '#f8f9fa',
-    padding: 16,
-    borderRadius: 8,
-    minHeight: 100,
-  },
-  notesPlaceholder: {
-    fontSize: 14,
-    color: Colors.light.tabIconDefault,
-    fontStyle: 'italic',
-  },
-  bottomNav: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: 'white',
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
-  },
   navButton: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
     gap: 8,
   },
-  navButtonDisabled: {
-    opacity: 0.5,
+  prevButton: {
+    backgroundColor: '#f8f9fa',
+    borderWidth: 1,
+    borderColor: Colors.light.tint,
+  },
+  nextButton: {
+    backgroundColor: Colors.light.tint,
   },
   navButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: Colors.light.tint,
   },
-  navButtonTextDisabled: {
-    color: Colors.light.tabIconDefault,
-  },
-  completeButton: {
+  lessonsContainer: {
     flex: 1,
+    backgroundColor: 'white',
+    paddingTop: 20,
+  },
+  lessonsTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: Colors.light.text,
+    paddingHorizontal: 20,
+    marginBottom: 16,
+  },
+  lessonItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.light.tint,
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
     paddingVertical: 12,
-    borderRadius: 8,
-    gap: 8,
-    marginHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
   },
-  completedButton: {
-    backgroundColor: '#28a745',
+  currentLessonItem: {
+    backgroundColor: '#f0f7ff',
   },
-  completeButtonText: {
+  lessonItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  lessonNumber: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  currentLessonNumber: {
+    backgroundColor: Colors.light.tint,
+  },
+  lessonNumberText: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: 'white',
+    color: Colors.light.text,
+  },
+  lessonItemInfo: {
+    flex: 1,
+  },
+  lessonItemTitle: {
+    fontSize: 16,
+    color: Colors.light.text,
+    marginBottom: 2,
+  },
+  currentLessonTitle: {
+    fontWeight: '600',
+    color: Colors.light.tint,
+  },
+  lessonItemDuration: {
+    fontSize: 12,
+    color: Colors.light.tabIconDefault,
   },
   loadingContainer: {
     flex: 1,
@@ -483,17 +604,35 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: Colors.light.tabIconDefault,
   },
+  noAccessContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+    gap: 16,
+  },
+  noAccessTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: Colors.light.text,
+  },
+  noAccessText: {
+    fontSize: 16,
+    color: Colors.light.tabIconDefault,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 40,
     gap: 16,
-    paddingHorizontal: 32,
   },
-  errorText: {
-    fontSize: 18,
-    color: Colors.light.tabIconDefault,
-    textAlign: 'center',
+  errorTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: Colors.light.text,
   },
   backButton: {
     backgroundColor: Colors.light.tint,
@@ -504,6 +643,6 @@ const styles = StyleSheet.create({
   backButtonText: {
     color: 'white',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
   },
 });

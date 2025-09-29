@@ -1,82 +1,101 @@
 import React from 'react';
-import {
-  View,
-  TextInput,
-  StyleSheet,
-  useColorScheme,
-  TouchableOpacity,
+import { 
+  View, 
+  TextInput, 
+  TouchableOpacity, 
+  StyleSheet, 
+  Platform 
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors } from '../constants/Colors';
+import { Colors } from '@/constants/Colors';
 
 interface SearchBarProps {
   value: string;
   onChangeText: (text: string) => void;
+  onSubmit: (text: string) => void;
   placeholder?: string;
-  onSubmit?: () => void;
 }
 
-export const SearchBar: React.FC<SearchBarProps> = ({
-  value,
-  onChangeText,
-  placeholder = 'Kurslarni qidiring...',
-  onSubmit,
-}) => {
-  const colorScheme = useColorScheme();
-  const colors = Colors[colorScheme ?? 'light'];
+export default function SearchBar({ 
+  value, 
+  onChangeText, 
+  onSubmit, 
+  placeholder = "Qidiring..." 
+}: SearchBarProps) {
+  const handleSubmit = () => {
+    onSubmit(value);
+  };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
-      <MaterialIcons
-        name="search"
-        size={20}
-        color={colors.text}
-        style={styles.searchIcon}
-      />
-      <TextInput
-        style={[styles.input, { color: colors.text }]}
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor={colors.text + '60'}
-        returnKeyType="search"
-        onSubmitEditing={onSubmit}
-      />
-      {value.length > 0 && (
-        <TouchableOpacity onPress={() => onChangeText('')}>
-          <MaterialIcons
-            name="clear"
-            size={20}
-            color={colors.text}
-            style={styles.clearIcon}
-          />
-        </TouchableOpacity>
-      )}
+    <View style={styles.container}>
+      <View style={styles.inputContainer}>
+        <MaterialIcons 
+          name="search" 
+          size={20} 
+          color={Colors.light.tabIconDefault} 
+          style={styles.searchIcon}
+        />
+        <TextInput
+          style={styles.input}
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={Colors.light.tabIconDefault}
+          onSubmitEditing={handleSubmit}
+          returnKeyType="search"
+          clearButtonMode="while-editing"
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        {value.length > 0 && (
+          <TouchableOpacity 
+            onPress={() => onChangeText('')}
+            style={styles.clearButton}
+          >
+            <MaterialIcons 
+              name="close" 
+              size={20} 
+              color={Colors.light.tabIconDefault} 
+            />
+          </TouchableOpacity>
+        )}
+      </View>
     </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
+    paddingVertical: 8,
+  },
+  inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    backgroundColor: '#f8f9fa',
     borderRadius: 12,
+    paddingHorizontal: 12,
     borderWidth: 1,
-    marginHorizontal: 16,
-    marginVertical: 8,
+    borderColor: '#e9ecef',
   },
   searchIcon: {
-    marginRight: 12,
-    opacity: 0.6,
+    marginRight: 8,
   },
   input: {
     flex: 1,
+    height: 44,
     fontSize: 16,
+    color: Colors.light.text,
+    ...Platform.select({
+      ios: {
+        paddingVertical: 12,
+      },
+      android: {
+        paddingVertical: 8,
+      },
+    }),
   },
-  clearIcon: {
-    marginLeft: 12,
-    opacity: 0.6,
+  clearButton: {
+    padding: 4,
+    marginLeft: 8,
   },
 });

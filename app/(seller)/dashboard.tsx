@@ -1,87 +1,99 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  ScrollView,
   StyleSheet,
+  ScrollView,
   TouchableOpacity,
-  RefreshControl,
+  ActivityIndicator,
   Alert,
-  Modal,
-  Platform,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useAuth } from '@/hooks/useAuth';
-import { CourseService } from '@/services/courseService';
-import { PaymentService } from '@/services/paymentService';
 import { Colors } from '@/constants/Colors';
+import { useAuth } from '@/hooks/useAuth';
+import { useCourses } from '@/hooks/useCourses';
+import supabase from '@/services/supabase';
+import { Course } from '@/types';
+
+interface DashboardStats {
+  totalCourses: number;
+  totalStudents: number;
+  totalRevenue: number;
+  averageRating: number;
+  pendingCourses: number;
+  activeCourses: number;
+}
 
 export default function SellerDashboard() {
-  const { profile } = useAuth();
-  const [courses, setCourses] = useState([]);
-  const [stats, setStats] = useState({
-    totalEarnings: 0,
-    monthlyEarnings: 0,
+  const { user, profile } = useAuth();
+  const { courses: allCourses } = useCourses();
+  const [myCourses, setMyCourses] = useState<Course[]>([]);
+  const [stats, setStats] = useState<DashboardStats>({
     totalCourses: 0,
     totalStudents: 0,
+    totalRevenue: 0,
     averageRating: 0,
+    pendingCourses: 0,
+    activeCourses: 0,
   });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Alert state for web compatibility
-  const [alertConfig, setAlertConfig] = useState<{
-    visible: boolean;
-    title: string;
-    message: string;
-    onOk?: () => void;
-  }>({ visible: false, title: '', message: '' });
-
-  const showWebAlert = (title: string, message: string, onOk?: () => void) => {
-    if (Platform.OS === 'web') {
-      setAlertConfig({ visible: true, title, message, onOk });
-    } else {
-      Alert.alert(title, message, onOk ? [{ text: 'OK', onPress: onOk }] : undefined);
-    }
-  };
-
   useEffect(() => {
-    if (profile?.role !== 'seller' && profile?.role !== 'admin') {
-      showWebAlert('Access Denied', 'Sizda seller dashboard ga kirish huquqi yo\'q');
-      router.back();
-      return;
+    if (user) {
+      loadDashboardData();
     }
-    
-    loadDashboardData();
-  }, [profile]);
+  }, [user]);
 
   const loadDashboardData = async () => {
-    if (!profile) return;
-    
-    setLoading(true);
-    try {
-      // Load seller courses
-      const { data: coursesData } = await CourseService.getCoursesByInstructor(profile.id);
-      setCourses(coursesData || []);
+    if (!user) return;
 
-      // Load earnings data
-      const { data: earningsData } = await PaymentService.getSellerEarnings();
+    try {
+      setLoading(true);
       
-      if (earningsData) {
-        setStats({
-          totalEarnings: earningsData.total || 0,
-          monthlyEarnings: earningsData.monthly || 0,
-          totalCourses: coursesData?.length || 0,
-          totalStudents: coursesData?.reduce((sum, course) => sum + (course.total_students || 0), 0) || 0,
-          averageRating: coursesData?.length > 0 
-            ? coursesData.reduce((sum, course) => sum + (course.rating || 0), 0) / coursesData.length 
-            : 0,
-        });
+      // Fetch seller's courses
+      const { data: coursesData, error: coursesError } = await supabase
+        .from('courses')
+        .select(`
+          *,
+          category:categories(*),
+          instructor:user_profiles(*),
+          lessons:lessons(count)
+        `)
+        .eq('seller_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (coursesError) {
+        throw coursesError;
       }
-    } catch (error) {
-      showWebAlert('Error', 'Ma\'lumotlarni yuklashda xatolik yuz berdi');
+
+      setMyCourses(coursesData || []);
+
+      // Calculate stats
+      const totalCourses = coursesData?.length || 0;
+      const activeCourses = coursesData?.filter(c => c.status === 'approved').length || 0;
+      const pendingCourses = coursesData?.filter(c => c.status === 'pending').length || 0;
+      const totalStudents = coursesData?.reduce((sum, course) => sum + (course.total_students || 0), 0) || 0;
+      const totalRevenue = coursesData?.reduce((sum, course) => sum + (course.price * (course.total_students || 0)), 0) || 0;
+      const averageRating = totalCourses > 0 
+        ? coursesData.reduce((sum, course) => sum + course.rating, 0) / totalCourses 
+        : 0;
+
+      setStats({
+        totalCourses,
+        totalStudents,
+        totalRevenue,
+        averageRating,
+        pendingCourses,
+        activeCourses,
+      });
+
+    } catch (error: any) {
+      console.error('Error loading dashboard data:', error);
+      Alert.alert('Xatolik', 'Ma\'lumotlarni yuklashda xatolik yuz berdi');
     } finally {
       setLoading(false);
     }
@@ -94,206 +106,156 @@ export default function SellerDashboard() {
   };
 
   const handleCreateCourse = () => {
-    router.push('/(seller)/create-course');
+    Alert.alert('Kurs yaratish', 'Kurs yaratish funksiyasi tez orada qo\'shiladi');
   };
 
-  const handleEditCourse = (courseId: string) => {
-    router.push(`/(seller)/edit-course/${courseId}`);
+  const handleCoursePress = (courseId: string) => {
+    router.push(`/course/${courseId}`);
   };
 
-  const handleViewAnalytics = () => {
-    router.push('/(seller)/analytics');
-  };
+  const renderWelcomeSection = () => (
+    <View style={styles.welcomeSection}>
+      <Text style={styles.welcomeTitle}>
+        Xush kelibsiz, {profile?.full_name || 'Instructor'}! 👋
+      </Text>
+      <Text style={styles.welcomeSubtitle}>
+        {profile?.role === 'admin' ? 'Admin panel boshqaruvi' : 'Instructor dashboard'}
+      </Text>
+    </View>
+  );
 
-  const handleRequestPayout = async () => {
-    if (stats.totalEarnings < 50000) { // Minimum payout threshold
-      showWebAlert('Insufficient Balance', 'Minimum payout amount 50,000 so\'m');
-      return;
-    }
-
-    try {
-      const { error } = await PaymentService.requestPayout(stats.totalEarnings);
-      
-      if (error) {
-        showWebAlert('Error', error.message);
-        return;
-      }
-      
-      showWebAlert('Success', 'Payout so\'rovi muvaffaqiyatli yuborildi');
-      loadDashboardData(); // Refresh data
-    } catch (error) {
-      showWebAlert('Error', 'Payout so\'rovida xatolik yuz berdi');
-    }
-  };
-
-  const renderStatsSection = () => (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>Statistika</Text>
-      
-      <View style={styles.statsGrid}>
-        <View style={styles.statCard}>
-          <MaterialIcons name="attach-money" size={28} color={Colors.light.tint} />
-          <Text style={styles.statNumber}>
-            {(stats.totalEarnings / 1000).toFixed(1)}K
-          </Text>
-          <Text style={styles.statLabel}>Umumiy daromad</Text>
-        </View>
-        
-        <View style={styles.statCard}>
-          <MaterialIcons name="trending-up" size={28} color="#10b981" />
-          <Text style={styles.statNumber}>
-            {(stats.monthlyEarnings / 1000).toFixed(1)}K
-          </Text>
-          <Text style={styles.statLabel}>Bu oy</Text>
-        </View>
-        
-        <View style={styles.statCard}>
-          <MaterialIcons name="school" size={28} color="#6366f1" />
+  const renderStatsCards = () => (
+    <View style={styles.statsContainer}>
+      <View style={styles.statsRow}>
+        <View style={[styles.statCard, styles.primaryCard]}>
+          <MaterialIcons name="school" size={24} color="white" />
           <Text style={styles.statNumber}>{stats.totalCourses}</Text>
-          <Text style={styles.statLabel}>Kurslar</Text>
+          <Text style={styles.statLabel}>Jami kurslar</Text>
         </View>
         
-        <View style={styles.statCard}>
-          <MaterialIcons name="people" size={28} color="#f59e0b" />
+        <View style={[styles.statCard, styles.successCard]}>
+          <MaterialIcons name="people" size={24} color="white" />
           <Text style={styles.statNumber}>{stats.totalStudents}</Text>
           <Text style={styles.statLabel}>Talabalar</Text>
         </View>
       </View>
+      
+      <View style={styles.statsRow}>
+        <View style={[styles.statCard, styles.warningCard]}>
+          <MaterialIcons name="attach-money" size={24} color="white" />
+          <Text style={styles.statNumber}>
+            {(stats.totalRevenue / 1000).toFixed(0)}k
+          </Text>
+          <Text style={styles.statLabel}>Daromad (so'm)</Text>
+        </View>
+        
+        <View style={[styles.statCard, styles.infoCard]}>
+          <MaterialIcons name="star" size={24} color="white" />
+          <Text style={styles.statNumber}>
+            {stats.averageRating.toFixed(1)}
+          </Text>
+          <Text style={styles.statLabel}>O'rtacha reyting</Text>
+        </View>
+      </View>
     </View>
   );
 
-  const renderActionsSection = () => (
+  const renderQuickActions = () => (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>Tezkor amallar</Text>
-      
-      <View style={styles.actionsGrid}>
-        <TouchableOpacity style={styles.actionCard} onPress={handleCreateCourse}>
-          <MaterialIcons name="add-circle" size={32} color={Colors.light.tint} />
+      <View style={styles.actionsContainer}>
+        <TouchableOpacity 
+          style={[styles.actionCard, styles.createCourseCard]}
+          onPress={handleCreateCourse}
+        >
+          <MaterialIcons name="add-circle" size={32} color="white" />
           <Text style={styles.actionTitle}>Yangi kurs</Text>
           <Text style={styles.actionSubtitle}>Kurs yaratish</Text>
         </TouchableOpacity>
         
-        <TouchableOpacity style={styles.actionCard} onPress={handleViewAnalytics}>
-          <MaterialIcons name="analytics" size={32} color="#10b981" />
-          <Text style={styles.actionTitle}>Statistika</Text>
-          <Text style={styles.actionSubtitle}>Batafsil tahlil</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity style={styles.actionCard} onPress={handleRequestPayout}>
-          <MaterialIcons name="payment" size={32} color="#f59e0b" />
-          <Text style={styles.actionTitle}>Payout</Text>
-          <Text style={styles.actionSubtitle}>Pul yechish</Text>
+        <TouchableOpacity 
+          style={[styles.actionCard, styles.analyticsCard]}
+          onPress={() => Alert.alert('Ma\'lumot', 'Tez orada...')}
+        >
+          <MaterialIcons name="analytics" size={32} color="white" />
+          <Text style={styles.actionTitle}>Analitika</Text>
+          <Text style={styles.actionSubtitle}>Statistika ko'rish</Text>
         </TouchableOpacity>
       </View>
     </View>
   );
 
-  const renderCoursesSection = () => (
+  const renderCoursesList = () => (
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Sizning kurslaringiz</Text>
-        <TouchableOpacity onPress={handleCreateCourse}>
-          <MaterialIcons name="add" size={24} color={Colors.light.tint} />
-        </TouchableOpacity>
+        <Text style={styles.sectionTitle}>Mening kurslarim</Text>
+        <Text style={styles.sectionCount}>{myCourses.length} ta</Text>
       </View>
       
-      {courses.length === 0 ? (
-        <View style={styles.emptyState}>
+      {myCourses.length === 0 ? (
+        <View style={styles.emptyContainer}>
           <MaterialIcons name="school" size={48} color={Colors.light.tabIconDefault} />
-          <Text style={styles.emptyTitle}>Hali kurslar mavjud emas</Text>
+          <Text style={styles.emptyTitle}>Hali kurslaringiz yo'q</Text>
           <Text style={styles.emptySubtitle}>
-            Birinchi kursingizni yarating va talabalar bilan bilim ulashing
+            Birinchi kursingizni yaratib, talabalar bilan bilimlaringizni ulashing
           </Text>
           <TouchableOpacity style={styles.createButton} onPress={handleCreateCourse}>
             <Text style={styles.createButtonText}>Kurs yaratish</Text>
           </TouchableOpacity>
         </View>
       ) : (
-        courses.map((course: any) => (
-          <TouchableOpacity
-            key={course.id}
-            style={styles.courseCard}
-            onPress={() => handleEditCourse(course.id)}
-          >
-            <View style={styles.courseHeader}>
-              <Text style={styles.courseTitle}>{course.title}</Text>
-              <View style={[styles.statusBadge, getStatusStyle(course.status)]}>
-                <Text style={[styles.statusText, getStatusTextStyle(course.status)]}>
-                  {getStatusLabel(course.status)}
+        <View style={styles.coursesContainer}>
+          {myCourses.map((course) => (
+            <TouchableOpacity
+              key={course.id}
+              style={styles.courseItem}
+              onPress={() => handleCoursePress(course.id)}
+            >
+              <View style={styles.courseInfo}>
+                <Text style={styles.courseTitle} numberOfLines={2}>
+                  {course.title}
                 </Text>
-              </View>
-            </View>
-            
-            <Text style={styles.courseDescription} numberOfLines={2}>
-              {course.description}
-            </Text>
-            
-            <View style={styles.courseStats}>
-              <View style={styles.courseStat}>
-                <MaterialIcons name="people" size={16} color={Colors.light.tabIconDefault} />
-                <Text style={styles.courseStatText}>{course.total_students || 0} talaba</Text>
+                <Text style={styles.courseStats}>
+                  {course.total_students} talaba • ⭐ {course.rating.toFixed(1)}
+                </Text>
+                <View style={styles.courseRow}>
+                  <Text style={styles.coursePrice}>
+                    {course.price.toLocaleString()} so'm
+                  </Text>
+                  <View style={[
+                    styles.statusBadge, 
+                    course.status === 'approved' ? styles.approvedBadge :
+                    course.status === 'pending' ? styles.pendingBadge :
+                    styles.rejectedBadge
+                  ]}>
+                    <Text style={[
+                      styles.statusText,
+                      course.status === 'approved' ? styles.approvedText :
+                      course.status === 'pending' ? styles.pendingText :
+                      styles.rejectedText
+                    ]}>
+                      {course.status === 'approved' ? 'Tasdiqlangan' :
+                       course.status === 'pending' ? 'Kutilmoqda' :
+                       'Rad etilgan'}
+                    </Text>
+                  </View>
+                </View>
               </View>
               
-              <View style={styles.courseStat}>
-                <MaterialIcons name="star" size={16} color={Colors.light.tabIconDefault} />
-                <Text style={styles.courseStatText}>{course.rating || 0}</Text>
-              </View>
-              
-              <View style={styles.courseStat}>
-                <MaterialIcons name="attach-money" size={16} color={Colors.light.tabIconDefault} />
-                <Text style={styles.courseStatText}>{course.price.toLocaleString()} so'm</Text>
-              </View>
-            </View>
-          </TouchableOpacity>
-        ))
+              <MaterialIcons name="chevron-right" size={20} color={Colors.light.tabIconDefault} />
+            </TouchableOpacity>
+          ))}
+        </View>
       )}
     </View>
   );
 
-  const getStatusStyle = (status: string) => {
-    switch (status) {
-      case 'approved':
-        return { backgroundColor: '#dcfce7' };
-      case 'pending':
-        return { backgroundColor: '#fef3c7' };
-      case 'rejected':
-        return { backgroundColor: '#fee2e2' };
-      default:
-        return { backgroundColor: '#f3f4f6' };
-    }
-  };
-
-  const getStatusTextStyle = (status: string) => {
-    switch (status) {
-      case 'approved':
-        return { color: '#166534' };
-      case 'pending':
-        return { color: '#92400e' };
-      case 'rejected':
-        return { color: '#dc2626' };
-      default:
-        return { color: '#6b7280' };
-    }
-  };
-
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'approved':
-        return 'Tasdiqlangan';
-      case 'pending':
-        return 'Kutilmoqda';
-      case 'rejected':
-        return 'Rad etilgan';
-      default:
-        return 'Qoralama';
-    }
-  };
-
-  if (loading) {
+  if (loading && !refreshing) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
-          <Text>Loading...</Text>
+          <ActivityIndicator size="large" color={Colors.light.tint} />
+          <Text style={styles.loadingText}>Dashboard yuklanmoqda...</Text>
         </View>
       </SafeAreaView>
     );
@@ -301,44 +263,18 @@ export default function SellerDashboard() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView
+      <ScrollView 
         style={styles.scrollView}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
+        showsVerticalScrollIndicator={false}
       >
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Seller Dashboard</Text>
-          <Text style={styles.headerSubtitle}>
-            Xush kelibsiz, {profile?.full_name || profile?.username}!
-          </Text>
-        </View>
-
-        {renderStatsSection()}
-        {renderActionsSection()}
-        {renderCoursesSection()}
+        {renderWelcomeSection()}
+        {renderStatsCards()}
+        {renderQuickActions()}
+        {renderCoursesList()}
       </ScrollView>
-
-      {/* Web Alert Modal */}
-      {Platform.OS === 'web' && (
-        <Modal visible={alertConfig.visible} transparent animationType="fade">
-          <View style={styles.alertOverlay}>
-            <View style={styles.alertContainer}>
-              <Text style={styles.alertTitle}>{alertConfig.title}</Text>
-              <Text style={styles.alertMessage}>{alertConfig.message}</Text>
-              <TouchableOpacity
-                style={styles.alertButton}
-                onPress={() => {
-                  alertConfig.onOk?.();
-                  setAlertConfig(prev => ({ ...prev, visible: false }));
-                }}
-              >
-                <Text style={styles.alertButtonText}>OK</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
-      )}
     </SafeAreaView>
   );
 }
@@ -351,160 +287,182 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  header: {
+  welcomeSection: {
     padding: 20,
     paddingBottom: 10,
   },
-  headerTitle: {
-    fontSize: 28,
+  welcomeTitle: {
+    fontSize: 24,
     fontWeight: 'bold',
     color: Colors.light.text,
+    marginBottom: 4,
   },
-  headerSubtitle: {
+  welcomeSubtitle: {
     fontSize: 16,
     color: Colors.light.tabIconDefault,
+  },
+  statsContainer: {
+    paddingHorizontal: 20,
+    marginBottom: 20,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 12,
+  },
+  statCard: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  primaryCard: {
+    backgroundColor: Colors.light.tint,
+  },
+  successCard: {
+    backgroundColor: '#10b981',
+  },
+  warningCard: {
+    backgroundColor: '#f59e0b',
+  },
+  infoCard: {
+    backgroundColor: '#6366f1',
+  },
+  statNumber: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: 'white',
+    marginTop: 8,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.9)',
     marginTop: 4,
+    textAlign: 'center',
   },
   section: {
-    marginTop: 24,
-    paddingHorizontal: 20,
+    backgroundColor: 'white',
+    marginBottom: 8,
+    paddingVertical: 20,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingHorizontal: 20,
     marginBottom: 16,
   },
   sectionTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: Colors.light.text,
-    marginBottom: 16,
   },
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  statCard: {
-    flex: 1,
-    minWidth: 140,
-    backgroundColor: 'white',
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  statNumber: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: Colors.light.text,
-    marginTop: 8,
-  },
-  statLabel: {
-    fontSize: 12,
+  sectionCount: {
+    fontSize: 14,
     color: Colors.light.tabIconDefault,
-    marginTop: 4,
-    textAlign: 'center',
   },
-  actionsGrid: {
+  actionsContainer: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    paddingHorizontal: 20,
     gap: 12,
   },
   actionCard: {
     flex: 1,
-    minWidth: 100,
-    backgroundColor: 'white',
-    padding: 16,
+    padding: 20,
     borderRadius: 12,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+  },
+  createCourseCard: {
+    backgroundColor: '#10b981',
+  },
+  analyticsCard: {
+    backgroundColor: '#6366f1',
   },
   actionTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.light.text,
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: 'white',
     marginTop: 8,
   },
   actionSubtitle: {
     fontSize: 12,
-    color: Colors.light.tabIconDefault,
-    marginTop: 2,
-    textAlign: 'center',
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 4,
   },
-  courseCard: {
-    backgroundColor: 'white',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+  coursesContainer: {
+    paddingHorizontal: 20,
   },
-  courseHeader: {
+  courseItem: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 8,
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  courseInfo: {
+    flex: 1,
   },
   courseTitle: {
-    flex: 1,
     fontSize: 16,
     fontWeight: '600',
     color: Colors.light.text,
-    marginRight: 12,
+    marginBottom: 4,
+  },
+  courseStats: {
+    fontSize: 14,
+    color: Colors.light.tabIconDefault,
+    marginBottom: 8,
+  },
+  courseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  coursePrice: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.light.tint,
   },
   statusBadge: {
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 6,
+    borderRadius: 4,
+  },
+  approvedBadge: {
+    backgroundColor: '#dcfce7',
+  },
+  pendingBadge: {
+    backgroundColor: '#fef3c7',
+  },
+  rejectedBadge: {
+    backgroundColor: '#fecaca',
   },
   statusText: {
     fontSize: 12,
     fontWeight: '600',
   },
-  courseDescription: {
-    fontSize: 14,
-    color: Colors.light.tabIconDefault,
-    lineHeight: 20,
-    marginBottom: 12,
+  approvedText: {
+    color: '#16a34a',
   },
-  courseStats: {
-    flexDirection: 'row',
-    gap: 16,
+  pendingText: {
+    color: '#d97706',
   },
-  courseStat: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+  rejectedText: {
+    color: '#dc2626',
   },
-  courseStatText: {
-    fontSize: 12,
-    color: Colors.light.tabIconDefault,
-  },
-  emptyState: {
+  emptyContainer: {
     alignItems: 'center',
     paddingVertical: 40,
+    paddingHorizontal: 20,
   },
   emptyTitle: {
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: 'bold',
     color: Colors.light.text,
     marginTop: 16,
     marginBottom: 8,
@@ -527,39 +485,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  // Alert styles
-  alertOverlay: {
+  loadingContainer: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
+    gap: 16,
   },
-  alertContainer: {
-    backgroundColor: 'white',
-    padding: 20,
-    borderRadius: 8,
-    minWidth: 280,
-    maxWidth: 340,
-  },
-  alertTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    color: Colors.light.text,
-  },
-  alertMessage: {
+  loadingText: {
     fontSize: 16,
-    marginBottom: 20,
-    color: Colors.light.text,
-  },
-  alertButton: {
-    backgroundColor: Colors.light.tint,
-    padding: 10,
-    borderRadius: 4,
-    alignItems: 'center',
-  },
-  alertButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
+    color: Colors.light.tabIconDefault,
   },
 });

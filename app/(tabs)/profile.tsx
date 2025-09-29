@@ -1,270 +1,579 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  useColorScheme,
   TouchableOpacity,
   ScrollView,
   Alert,
+  ActivityIndicator,
+  Switch,
+  Modal,
+  TextInput,
 } from 'react-native';
-import { Image } from 'expo-image';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors } from '../../constants/Colors';
+import { router } from 'expo-router';
+import { Image } from 'expo-image';
+import { Colors } from '@/constants/Colors';
+import { useAuth } from '@/hooks/useAuth';
+import { useCourses } from '@/hooks/useCourses';
 
 export default function ProfileScreen() {
-  const colorScheme = useColorScheme();
-  const colors = Colors[colorScheme ?? 'light'];
-  const insets = useSafeAreaInsets();
+  const { user, profile, updateProfile, signOut, loading: authLoading } = useAuth();
+  const { enrolledCourses } = useCourses();
+  const [darkMode, setDarkMode] = useState(false);
+  const [notifications, setNotifications] = useState(true);
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editForm, setEditForm] = useState({
+    full_name: '',
+    username: '',
+    bio: '',
+  });
+  const [updating, setUpdating] = useState(false);
 
-  // Mock user data
-  const user = {
-    name: 'Foydalanuvchi',
-    email: 'user@example.com',
-    avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&h=150&fit=crop&crop=face',
-    enrolledCourses: 2,
-    completedCourses: 1,
-    totalHours: 8.5,
+  useEffect(() => {
+    if (profile) {
+      setEditForm({
+        full_name: profile.full_name || '',
+        username: profile.username || '',
+        bio: profile.bio || '',
+      });
+    }
+  }, [profile]);
+
+  const handleSignOut = () => {
+    Alert.alert(
+      'Chiqish',
+      'Haqiqatan ham tizimdan chiqmoqchimisiz?',
+      [
+        { text: 'Bekor qilish', style: 'cancel' },
+        {
+          text: 'Chiqish',
+          style: 'destructive',
+          onPress: signOut
+        }
+      ]
+    );
   };
 
-  const menuItems = [
+  const handleUpdateProfile = async () => {
+    if (!editForm.full_name.trim() || !editForm.username.trim()) {
+      Alert.alert('Xatolik', 'Ism va foydalanuvchi nomi majburiy');
+      return;
+    }
+
+    setUpdating(true);
+    try {
+      const { error } = await updateProfile(editForm);
+      
+      if (error) {
+        Alert.alert('Xatolik', error.message || 'Profilni yangilashda xatolik');
+        return;
+      }
+
+      Alert.alert('Muvaffaqiyat', 'Profil muvaffaqiyatli yangilandi');
+      setEditModalVisible(false);
+    } catch (error) {
+      Alert.alert('Xatolik', 'Profilni yangilashda xatolik');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const getProgressStats = () => {
+    if (enrolledCourses.length === 0) return { completed: 0, inProgress: 0, total: 0 };
+    
+    const completed = enrolledCourses.filter(course => course.progress >= 100).length;
+    const inProgress = enrolledCourses.filter(course => course.progress > 0 && course.progress < 100).length;
+    
+    return {
+      completed,
+      inProgress,
+      total: enrolledCourses.length
+    };
+  };
+
+  const stats = getProgressStats();
+
+  const renderProfileHeader = () => (
+    <View style={styles.headerContainer}>
+      <View style={styles.avatarContainer}>
+        {profile?.avatar_url ? (
+          <Image
+            source={{ uri: profile.avatar_url }}
+            style={styles.avatar}
+            contentFit="cover"
+          />
+        ) : (
+          <View style={[styles.avatar, styles.avatarPlaceholder]}>
+            <Text style={styles.avatarText}>
+              {profile?.full_name?.[0] || profile?.username?.[0] || 'U'}
+            </Text>
+          </View>
+        )}
+        <TouchableOpacity style={styles.editAvatarBtn}>
+          <MaterialIcons name="camera-alt" size={16} color="white" />
+        </TouchableOpacity>
+      </View>
+      
+      <View style={styles.userInfo}>
+        <Text style={styles.userName}>{profile?.full_name || 'Foydalanuvchi'}</Text>
+        <Text style={styles.userEmail}>@{profile?.username || 'username'}</Text>
+        <Text style={styles.userBio}>{profile?.bio || 'Bio qo\'shilmagan'}</Text>
+        <View style={styles.roleBadge}>
+          <Text style={styles.roleText}>
+            {profile?.role === 'admin' ? '👑 Admin' : 
+             profile?.role === 'seller' ? '🎓 Instructor' : 
+             '🎯 Student'}
+          </Text>
+        </View>
+      </View>
+      
+      <TouchableOpacity 
+        style={styles.editBtn}
+        onPress={() => setEditModalVisible(true)}
+      >
+        <MaterialIcons name="edit" size={20} color={Colors.light.tint} />
+      </TouchableOpacity>
+    </View>
+  );
+
+  const renderStats = () => (
+    <View style={styles.statsContainer}>
+      <View style={styles.statItem}>
+        <Text style={styles.statNumber}>{stats.total}</Text>
+        <Text style={styles.statLabel}>Kurslar</Text>
+      </View>
+      <View style={styles.statItem}>
+        <Text style={styles.statNumber}>{stats.completed}</Text>
+        <Text style={styles.statLabel}>Tugallangan</Text>
+      </View>
+      <View style={styles.statItem}>
+        <Text style={styles.statNumber}>{stats.inProgress}</Text>
+        <Text style={styles.statLabel}>Jarayonda</Text>
+      </View>
+      <View style={styles.statItem}>
+        <Text style={styles.statNumber}>
+          {stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0}%
+        </Text>
+        <Text style={styles.statLabel}>Progress</Text>
+      </View>
+    </View>
+  );
+
+  const renderMenuSection = (title: string, items: any[]) => (
+    <View style={styles.menuSection}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      {items.map((item, index) => (
+        <TouchableOpacity
+          key={index}
+          style={styles.menuItem}
+          onPress={item.onPress}
+          disabled={item.disabled}
+        >
+          <View style={styles.menuItemLeft}>
+            <MaterialIcons name={item.icon} size={24} color={item.color || Colors.light.text} />
+            <Text style={[styles.menuItemText, item.color && { color: item.color }]}>
+              {item.title}
+            </Text>
+          </View>
+          {item.switch ? (
+            <Switch
+              value={item.value}
+              onValueChange={item.onValueChange}
+              trackColor={{ false: '#767577', true: Colors.light.tint }}
+            />
+          ) : (
+            <MaterialIcons name="chevron-right" size={20} color={Colors.light.tabIconDefault} />
+          )}
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+
+  const renderEditModal = () => (
+    <Modal
+      visible={editModalVisible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+    >
+      <SafeAreaView style={styles.modalContainer}>
+        <View style={styles.modalHeader}>
+          <TouchableOpacity onPress={() => setEditModalVisible(false)}>
+            <Text style={styles.modalCancel}>Bekor qilish</Text>
+          </TouchableOpacity>
+          <Text style={styles.modalTitle}>Profilni tahrirlash</Text>
+          <TouchableOpacity onPress={handleUpdateProfile} disabled={updating}>
+            <Text style={[styles.modalSave, updating && styles.modalSaveDisabled]}>
+              {updating ? 'Saqlanmoqda...' : 'Saqlash'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+        
+        <ScrollView style={styles.modalContent}>
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>To'liq ism</Text>
+            <TextInput
+              style={styles.textInput}
+              value={editForm.full_name}
+              onChangeText={(text) => setEditForm(prev => ({ ...prev, full_name: text }))}
+              placeholder="Ismingizni kiriting"
+            />
+          </View>
+          
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Foydalanuvchi nomi</Text>
+            <TextInput
+              style={styles.textInput}
+              value={editForm.username}
+              onChangeText={(text) => setEditForm(prev => ({ ...prev, username: text }))}
+              placeholder="Foydalanuvchi nomini kiriting"
+              autoCapitalize="none"
+            />
+          </View>
+          
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Bio</Text>
+            <TextInput
+              style={[styles.textInput, styles.textArea]}
+              value={editForm.bio}
+              onChangeText={(text) => setEditForm(prev => ({ ...prev, bio: text }))}
+              placeholder="O'zingiz haqingizda qisqacha ma'lumot..."
+              multiline
+              numberOfLines={4}
+            />
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
+  );
+
+  if (authLoading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.light.tint} />
+          <Text style={styles.loadingText}>Profil yuklanmoqda...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!user) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.errorContainer}>
+          <MaterialIcons name="person-off" size={64} color={Colors.light.tabIconDefault} />
+          <Text style={styles.errorText}>Tizimga kiring</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const learningMenuItems = [
     {
-      icon: 'edit',
-      title: 'Profilni tahrirlash',
-      onPress: () => Alert.alert('Profilni tahrirlash', 'Bu funksiya tez orada qo\'shiladi'),
+      title: 'Mening kurslarim',
+      icon: 'school',
+      onPress: () => router.push('/my-courses' as any),
     },
     {
-      icon: 'notifications',
-      title: 'Bildirishnomalar',
-      onPress: () => Alert.alert('Bildirishnomalar', 'Bu funksiya tez orada qo\'shiladi'),
-    },
-    {
+      title: 'Yuklab olinganlar',
       icon: 'download',
-      title: 'Yuklab olishlar',
-      onPress: () => Alert.alert('Yuklab olishlar', 'Bu funksiya tez orada qo\'shiladi'),
+      onPress: () => Alert.alert('Ma\'lumot', 'Tez orada...'),
     },
     {
-      icon: 'settings',
-      title: 'Sozlamalar',
-      onPress: () => Alert.alert('Sozlamalar', 'Bu funksiya tez orada qo\'shiladi'),
-    },
-    {
-      icon: 'help',
-      title: 'Yordam',
-      onPress: () => Alert.alert('Yordam', 'Savollaringiz uchun support@coursemarketplace.uz ga murojaat qiling'),
-    },
-    {
-      icon: 'info',
-      title: 'Ilova haqida',
-      onPress: () => Alert.alert('Ilova haqida', 'Kurs Marketi v1.0.0\nEng yaxshi kurslarni o\'rganing!'),
+      title: 'Saqlanganlar',
+      icon: 'bookmark',
+      onPress: () => Alert.alert('Ma\'lumot', 'Tez orada...'),
     },
   ];
 
-  const MenuItem: React.FC<{ item: typeof menuItems[0] }> = ({ item }) => (
-    <TouchableOpacity
-      style={[styles.menuItem, { backgroundColor: colors.card, borderColor: colors.border }]}
-      onPress={item.onPress}
-      activeOpacity={0.7}
-    >
-      <View style={styles.menuItemLeft}>
-        <View style={[styles.menuIcon, { backgroundColor: colors.secondary }]}>
-          <MaterialIcons name={item.icon as any} size={24} color={colors.primary} />
-        </View>
-        <Text style={[styles.menuTitle, { color: colors.text }]}>
-          {item.title}
-        </Text>
-      </View>
-      <MaterialIcons name="chevron-right" size={20} color={colors.text} />
-    </TouchableOpacity>
-  );
+  const sellerMenuItems = profile?.role === 'seller' || profile?.role === 'admin' ? [
+    {
+      title: 'Instructor dashboard',
+      icon: 'dashboard',
+      onPress: () => router.push('/(seller)/dashboard'),
+    },
+    {
+      title: 'Kurs yaratish',
+      icon: 'add-circle',
+      onPress: () => Alert.alert('Ma\'lumot', 'Tez orada...'),
+    },
+  ] : [];
+
+  const settingsMenuItems = [
+    {
+      title: 'Qorong\'u rejim',
+      icon: 'dark-mode',
+      switch: true,
+      value: darkMode,
+      onValueChange: setDarkMode,
+    },
+    {
+      title: 'Bildirishnomalar',
+      icon: 'notifications',
+      switch: true,
+      value: notifications,
+      onValueChange: setNotifications,
+    },
+    {
+      title: 'Parol o\'zgartirish',
+      icon: 'lock',
+      onPress: () => Alert.alert('Ma\'lumot', 'Tez orada...'),
+    },
+    {
+      title: 'Til',
+      icon: 'language',
+      onPress: () => Alert.alert('Ma\'lumot', 'Tez orada...'),
+    },
+  ];
+
+  const supportMenuItems = [
+    {
+      title: 'Yordam',
+      icon: 'help',
+      onPress: () => Alert.alert('Ma\'lumot', 'Tez orada...'),
+    },
+    {
+      title: 'Biz haqimizda',
+      icon: 'info',
+      onPress: () => Alert.alert('Ma\'lumot', 'Tez orada...'),
+    },
+    {
+      title: 'Chiqish',
+      icon: 'logout',
+      color: '#ef4444',
+      onPress: handleSignOut,
+    },
+  ];
 
   return (
-    <ScrollView
-      style={[styles.container, { backgroundColor: colors.background }]}
-      contentContainerStyle={{ paddingTop: insets.top }}
-      showsVerticalScrollIndicator={false}
-    >
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: colors.text }]}>
-          Profil
-        </Text>
-      </View>
-
-      {/* Profile Info */}
-      <View style={[styles.profileCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <Image
-          source={{ uri: user.avatar }}
-          style={styles.avatar}
-          contentFit="cover"
-        />
-        <View style={styles.profileInfo}>
-          <Text style={[styles.userName, { color: colors.text }]}>
-            {user.name}
-          </Text>
-          <Text style={[styles.userEmail, { color: colors.text }]}>
-            {user.email}
-          </Text>
-        </View>
-      </View>
-
-      {/* Stats */}
-      <View style={styles.statsContainer}>
-        <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[styles.statNumber, { color: colors.primary }]}>
-            {user.enrolledCourses}
-          </Text>
-          <Text style={[styles.statLabel, { color: colors.text }]}>
-            Yozilgan kurslar
-          </Text>
-        </View>
-        <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[styles.statNumber, { color: colors.success }]}>
-            {user.completedCourses}
-          </Text>
-          <Text style={[styles.statLabel, { color: colors.text }]}>
-            Tugallangan
-          </Text>
-        </View>
-        <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[styles.statNumber, { color: colors.accent }]}>
-            {user.totalHours}
-          </Text>
-          <Text style={[styles.statLabel, { color: colors.text }]}>
-            Soat o'rgangansiz
-          </Text>
-        </View>
-      </View>
-
-      {/* Menu Items */}
-      <View style={styles.menuContainer}>
-        {menuItems.map((item, index) => (
-          <MenuItem key={index} item={item} />
-        ))}
-      </View>
-
-      {/* Logout Button */}
-      <TouchableOpacity
-        style={[styles.logoutButton, { backgroundColor: colors.error + '20', borderColor: colors.error }]}
-        onPress={() => Alert.alert('Chiqish', 'Hisobingizdan chiqmoqchimisiz?', [
-          { text: 'Bekor qilish', style: 'cancel' },
-          { text: 'Chiqish', style: 'destructive', onPress: () => Alert.alert('Chiqish', 'Bu funksiya tez orada qo\'shiladi') }
-        ])}
-        activeOpacity={0.7}
-      >
-        <MaterialIcons name="logout" size={20} color={colors.error} />
-        <Text style={[styles.logoutText, { color: colors.error }]}>
-          Hisobdan chiqish
-        </Text>
-      </TouchableOpacity>
-    </ScrollView>
+    <SafeAreaView style={styles.container}>
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        {renderProfileHeader()}
+        {renderStats()}
+        {renderMenuSection('Ta\'lim', learningMenuItems)}
+        {sellerMenuItems.length > 0 && renderMenuSection('Instructor', sellerMenuItems)}
+        {renderMenuSection('Sozlamalar', settingsMenuItems)}
+        {renderMenuSection('Yordam', supportMenuItems)}
+      </ScrollView>
+      {renderEditModal()}
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: Colors.light.background,
   },
-  header: {
-    paddingHorizontal: 16,
-    paddingVertical: 20,
+  scrollView: {
+    flex: 1,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-  },
-  profileCard: {
+  headerContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: 16,
     padding: 20,
-    borderRadius: 16,
-    borderWidth: 1,
-    marginBottom: 20,
+    backgroundColor: 'white',
+    marginBottom: 8,
+  },
+  avatarContainer: {
+    position: 'relative',
   },
   avatar: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    marginRight: 16,
   },
-  profileInfo: {
+  avatarPlaceholder: {
+    backgroundColor: Colors.light.tint,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarText: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: 'white',
+  },
+  editAvatarBtn: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: Colors.light.tint,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'white',
+  },
+  userInfo: {
     flex: 1,
+    marginLeft: 16,
   },
   userName: {
     fontSize: 20,
     fontWeight: 'bold',
-    marginBottom: 4,
+    color: Colors.light.text,
+    marginBottom: 2,
   },
   userEmail: {
     fontSize: 14,
-    opacity: 0.7,
+    color: Colors.light.tabIconDefault,
+    marginBottom: 4,
+  },
+  userBio: {
+    fontSize: 14,
+    color: Colors.light.text,
+    marginBottom: 8,
+    lineHeight: 18,
+  },
+  roleBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#f0f0f0',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  roleText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  editBtn: {
+    padding: 8,
   },
   statsContainer: {
     flexDirection: 'row',
+    backgroundColor: 'white',
+    paddingVertical: 20,
     paddingHorizontal: 16,
-    marginBottom: 24,
+    marginBottom: 8,
   },
-  statCard: {
+  statItem: {
     flex: 1,
     alignItems: 'center',
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    marginHorizontal: 4,
   },
   statNumber: {
     fontSize: 24,
     fontWeight: 'bold',
-    marginBottom: 4,
+    color: Colors.light.text,
   },
   statLabel: {
     fontSize: 12,
-    textAlign: 'center',
-    opacity: 0.7,
+    color: Colors.light.tabIconDefault,
+    marginTop: 4,
   },
-  menuContainer: {
-    paddingHorizontal: 16,
+  menuSection: {
+    backgroundColor: 'white',
+    marginBottom: 8,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.light.text,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
   },
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    marginBottom: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
   },
   menuItemLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
   },
-  menuIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  menuTitle: {
+  menuItemText: {
     fontSize: 16,
-    fontWeight: '500',
+    color: Colors.light.text,
+    marginLeft: 16,
   },
-  logoutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  loadingContainer: {
+    flex: 1,
     justifyContent: 'center',
-    marginHorizontal: 16,
-    marginVertical: 24,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
+    alignItems: 'center',
+    gap: 16,
   },
-  logoutText: {
+  loadingText: {
+    fontSize: 16,
+    color: Colors.light.tabIconDefault,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 16,
+  },
+  errorText: {
+    fontSize: 18,
+    color: Colors.light.tabIconDefault,
+  },
+  // Modal styles
+  modalContainer: {
+    flex: 1,
+    backgroundColor: Colors.light.background,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  modalCancel: {
+    fontSize: 16,
+    color: Colors.light.tabIconDefault,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: Colors.light.text,
+  },
+  modalSave: {
     fontSize: 16,
     fontWeight: '600',
-    marginLeft: 8,
+    color: Colors.light.tint,
+  },
+  modalSaveDisabled: {
+    color: Colors.light.tabIconDefault,
+  },
+  modalContent: {
+    flex: 1,
+    padding: 20,
+  },
+  inputGroup: {
+    marginBottom: 20,
+  },
+  inputLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.light.text,
+    marginBottom: 8,
+  },
+  textInput: {
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: Colors.light.text,
+    backgroundColor: 'white',
+  },
+  textArea: {
+    height: 100,
+    textAlignVertical: 'top',
   },
 });
